@@ -22,13 +22,14 @@ endif()
 
 cmake_minimum_required(VERSION 3.13)
 
-# Platform selection: m1, m2, z0, fj
-set(PLATFORM "m2" CACHE STRING "Target platform: m1, m2, z0, fj")
-set_property(CACHE PLATFORM PROPERTY STRINGS m1 m2 z0 fj)
+# Platform selection: m1, m2, z0, fj, pc
+set(PLATFORM "m2" CACHE STRING "Target platform: m1, m2, z0, fj, pc")
+set_property(CACHE PLATFORM PROPERTY STRINGS m1 m2 z0 fj pc)
 
 if(NOT PLATFORM STREQUAL "m1" AND NOT PLATFORM STREQUAL "m2"
-   AND NOT PLATFORM STREQUAL "z0" AND NOT PLATFORM STREQUAL "fj")
-    message(FATAL_ERROR "Unknown PLATFORM '${PLATFORM}' — must be m1, m2, z0, or fj")
+   AND NOT PLATFORM STREQUAL "z0" AND NOT PLATFORM STREQUAL "fj"
+   AND NOT PLATFORM STREQUAL "pc")
+    message(FATAL_ERROR "Unknown PLATFORM '${PLATFORM}' — must be m1, m2, z0, fj, or pc")
 endif()
 
 set(CPU_SPEED "252" CACHE STRING "CPU clock in MHz")
@@ -40,10 +41,21 @@ set(FLASH_SPEED "66"  CACHE STRING "Flash target max frequency in MHz")
 #   HDMI_PIO        PIO HDMI/VGA, I2S or PWM audio
 #   COMPOSITE       software PAL/NTSC TV, I2S or PWM audio
 #   HSTX            RP2350 HSTX DVI at 720x576p50 with HDMI-embedded audio
+#   LCD_SPI         the PicoCalc's 320x320 SPI LCD, PWM audio (pc only)
 # Declared here — before the voltage is derived below — so COMPOSITE can raise
 # CPU_SPEED.
-set(HDMI_DRIVER "HDMI_PIO_AUDIO" CACHE STRING "HDMI driver: HDMI_PIO_AUDIO, HDMI_PIO, COMPOSITE or HSTX")
-set_property(CACHE HDMI_DRIVER PROPERTY STRINGS "HDMI_PIO_AUDIO" "HDMI_PIO" "COMPOSITE" "HSTX")
+set(HDMI_DRIVER "HDMI_PIO_AUDIO" CACHE STRING "HDMI driver: HDMI_PIO_AUDIO, HDMI_PIO, COMPOSITE, HSTX or LCD_SPI")
+set_property(CACHE HDMI_DRIVER PROPERTY STRINGS "HDMI_PIO_AUDIO" "HDMI_PIO" "COMPOSITE" "HSTX" "LCD_SPI")
+
+# The PicoCalc has an SPI LCD and nothing else, and LCD_SPI drives nothing but
+# the PicoCalc's panel, so each requires the other.  build.sh picks LCD_SPI
+# for PLATFORM=pc by default.
+if(PLATFORM STREQUAL "pc" AND NOT HDMI_DRIVER STREQUAL "LCD_SPI")
+    message(FATAL_ERROR "PLATFORM=pc needs HDMI_DRIVER=LCD_SPI (got ${HDMI_DRIVER})")
+endif()
+if(HDMI_DRIVER STREQUAL "LCD_SPI" AND NOT PLATFORM STREQUAL "pc")
+    message(FATAL_ERROR "HDMI_DRIVER=LCD_SPI is only supported on PLATFORM=pc")
+endif()
 
 # HSTX is Fruit-Jam-only for now.  It needs eight HSTX-capable GPIOs wired as
 # four TMDS pairs, which on the RP2350 means GPIO 12 to 19 and nothing else,
@@ -90,6 +102,15 @@ elseif(PLATFORM STREQUAL "fj")
     if(CPU_SPEED GREATER "300")
         set(CPU_SPEED "252" CACHE STRING "CPU clock in MHz" FORCE)
     endif()
+elseif(PLATFORM STREQUAL "pc")
+    # A Pico 2 or a Pico 2 W in the PicoCalc's socket.  One UF2 for both: the
+    # plain pico2 board header, and firmware that never touches GPIO 23, 24,
+    # 25 or 29, which belong to the wireless chip on a W.  See board_pc.h.
+    set(PICO_BOARD "pico2" CACHE STRING "Board type" FORCE)
+    set(PICO_PLATFORM "rp2350-arm-s" CACHE STRING "Pico platform" FORCE)
+    if(CPU_SPEED GREATER "300")
+        set(CPU_SPEED "252" CACHE STRING "CPU clock in MHz" FORCE)
+    endif()
 else()
     set(PICO_BOARD "pico2" CACHE STRING "Board type" FORCE)
     set(PICO_PLATFORM "rp2350-arm-s" CACHE STRING "Pico platform" FORCE)
@@ -132,6 +153,15 @@ elseif(PLATFORM STREQUAL "fj")
     set(SD_MOSI 35)
     set(SD_MISO 36)
     set(HDMI_PIN 12)
+elseif(PLATFORM STREQUAL "pc")
+    # No HDMI_PIN or TV_PIN: the only video is the SPI LCD.
+    # These four SD values are duplicated in src/board_pc.h and must agree.
+    set(PLATFORM_DEF PLATFORM_PC)
+    set(BOARD_DEF BOARD_PC)
+    set(SD_CS 17)
+    set(SD_SCK 18)
+    set(SD_MOSI 19)
+    set(SD_MISO 16)
 else()
     # m2
     set(PLATFORM_DEF PLATFORM_M2)
@@ -152,6 +182,12 @@ endif()
 # and the boot-time USB-enumeration delay are disabled.  Off by default: the
 # native USB port is then used for USB-CDC printf instead (PS/2 only input).
 option(USB_HID_ENABLED "Enable USB HID host (keyboard + gamepad)" OFF)
+
+# The PicoCalc has no USB host socket.  The Pico's own USB port is the only
+# native one, and it is kept for a USB-CDC fallback console.
+if(PLATFORM STREQUAL "pc" AND USB_HID_ENABLED)
+    message(FATAL_ERROR "USB_HID is not supported on PLATFORM=pc: there is no USB host socket")
+endif()
 
 # On the Fruit Jam the two USB-A sockets sit behind a CH334F hub whose upstream
 # pair is on GPIO 1 and 2.  Those are ordinary PIO pins, not the RP2350's
@@ -404,6 +440,51 @@ elseif(HDMI_DRIVER STREQUAL "HSTX")
         hardware_clocks
         hardware_pll
         hardware_irq
+        hardware_vreg
+        hardware_exception
+        hardware_watchdog
+        hardware_i2c
+    )
+elseif(HDMI_DRIVER STREQUAL "LCD_SPI")
+    # --- LCD_SPI: the PicoCalc's ST7365P SPI LCD, PWM audio, UART0 console ---
+    #
+    # No PIO video and no ribbon detect, so no HDMI_vga.c and no test_pins.c.
+    # audio.c and tlv320dac3100.c are here only because frank_audio.c links
+    # against them; the I2S backend is never selected on this board and the
+    # codec driver compiles to stubs without CODEC_I2C_ADDR.
+    add_library(drivers
+        drivers/lcd_st7365p.c
+        drivers/uart_stdio_nb.c
+        drivers/crash_handler.c
+        drivers/tlv320dac3100.c
+        drivers/audio.c
+        drivers/audio_i2s_opt.S
+        drivers/pwm_audio/pwm_audio.c
+        drivers/psram_init.c
+        drivers/psram_allocator.c
+        drivers/dlmalloc.c
+    )
+    target_include_directories(drivers PUBLIC drivers drivers/pwm_audio src)
+    target_compile_definitions(drivers PUBLIC
+        ${BOARD_DEF}
+        ${PLATFORM_DEF}=1
+        VIDEO_LCD_SPI=1
+    )
+    target_compile_definitions(drivers PRIVATE
+        PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
+    )
+    pico_generate_pio_header(drivers ${CMAKE_CURRENT_LIST_DIR}/drivers/audio_i2s.pio)
+    target_link_libraries(drivers
+        pico_stdlib
+        pico_multicore
+        hardware_dma
+        hardware_pio
+        hardware_pwm
+        hardware_spi
+        hardware_gpio
+        hardware_clocks
+        hardware_irq
+        hardware_uart
         hardware_vreg
         hardware_exception
         hardware_watchdog
@@ -664,6 +745,8 @@ elseif(HDMI_DRIVER STREQUAL "HSTX")
     # rather than palette indices, which changes what several source files
     # write into it.  See FRAMEBUFFER_PIXEL() in drivers/HDMI.h.
     target_compile_definitions(frank-micro PRIVATE HDMI_HSTX=1)
+elseif(HDMI_DRIVER STREQUAL "LCD_SPI")
+    target_compile_definitions(frank-micro PRIVATE VIDEO_LCD_SPI=1)
 endif()
 
 if(USB_HID_ENABLED)
@@ -721,6 +804,10 @@ endif()
 # USB_HID build, where the USB-CDC path is switched off below.  This matters
 # more here than on the other boards: the Fruit Jam is the only hardware this
 # project can test on, and a release build otherwise has no console at all.
+#
+# The PicoCalc's console is UART0 too, but not through pico_stdio_uart, whose
+# writes spin while the TX FIFO is full.  drivers/uart_stdio_nb.c registers an
+# interrupt-driven driver instead, so the SDK's is left out here.
 if(PLATFORM STREQUAL "fj")
     pico_enable_stdio_uart(frank-micro 1)
 else()

@@ -481,6 +481,29 @@ Ctrl+Shift+Esc, COPY on Shift+Del, SHIFT LOCK on Alt+Caps, and the symbol
 table in section 7.3. Phase 0 has passed its exit check. Phase 1 starts on
 branch `picocalc-phase1`.
 
+### 2026-10-30: PicoCalc phase 1 decisions
+
+- **The default model stays Master 128 on `pc`**, the same as every other
+  board. This is the user's choice, against the brief's "boots a BBC Model B".
+  `micro.ini` and the F12 menu still switch it.
+- **The console is UART0 through a new non-blocking stdio driver**,
+  `drivers/uart_stdio_nb.c`. `pico_enable_stdio_uart` is off for `pc`. USB-CDC
+  is left on, by the existing rule that enables it whenever `USB_HID` is off.
+  That gives a second console on the Pico module's own USB port, which costs
+  nothing because nothing else uses the native controller on this board.
+- **PWM-only audio was moved from phase 4 into phase 1.** With no HDMI audio,
+  the existing default for non-HDMI builds is I2S. On `pc`, that would start
+  a PIO state machine on the `I2S_*` pins, which board_pc.h defines only so
+  `audio.c` compiles. So `FRANK_AUDIO_DEFAULT` is PWM on `pc`, the F12 menu
+  offers PWM alone, and both `frank_settings_apply_live()` and
+  `frank_audio_set_driver()` force PWM. The PWM push is still the existing
+  blocking one; making it non-blocking stays in phase 4.
+- **`HDMI_DRIVER=LCD_SPI` is a fifth video build**, and it and `PLATFORM=pc`
+  each require the other. `build.sh` defaults to it when `PLATFORM=pc`.
+  `USB_HID=1` is rejected for `pc`.
+- **A disc for the blind boot needs no INI.** `frank_disk_autoload()` falls
+  back to `/micro/disk/drivea.ssd`, so naming the test disc that is enough.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
@@ -1007,6 +1030,29 @@ Read from the SDK's behaviour: `uart_putc()` spins on a full 32-byte TX FIFO,
 The PicoCalc gets a ring-buffered, interrupt-driven stdio driver that drops when
 full (`docs/PICOCALC.md` section 5.3). The Fruit Jam's UART1 console has the
 same latent cost. It is not changed, and is recorded here only.
+
+### 2026-10-30: build environment for the PicoCalc work
+
+On this machine (Ubuntu 26.04), installed with apt: `gcc-arm-none-eabi`
+14.2.1, `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`, cmake
+4.2.3, and ruby with erb, which Ubuntu's package includes. `tools/setup.sh` then
+cloned Pico SDK 2.2.0 to `~/dev/pico-sdk` with tinyusb, and initialised the
+repository submodules. The SDK's `boards/pico2.h` was then read: default UART0
+on GPIO 0/1, LED on 25. That settles the assumption `docs/PICOCALC.md` section
+12 recorded.
+
+### 2026-10-30: PicoCalc phase 1 builds, and the other boards are byte-identical
+
+`PLATFORM=pc` builds clean: 338,220 bytes of flash and 277,792 bytes of RAM
+(53.0% of 512 KB). That is well inside N5's ceiling of 393,000. `SCRATCH_X`
+and `SCRATCH_Y` are 2 KB each. The ELF has `uart_stdio_nb_init` and
+`stdio_usb_init`, and no `stdio_uart`.
+
+Frozen boards: all 22 existing variants (m2, m1 and z0 in each driver, fj in
+`HDMI_PIO_AUDIO`, `HDMI_PIO` and `HSTX`, each with `USB_HID` 0 and 1) were
+built out-of-tree before and after the change, from the same directory. RESULT_PLACEHOLDER
+
+Not yet run on hardware.
 
 ## Dead ends, so nobody retries them
 

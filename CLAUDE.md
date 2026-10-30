@@ -23,8 +23,8 @@ Four boards are supported: `m1` Murmulator 1.x, `m2` Murmulator 2.0, `z0`
 Waveshare RP2350-PiZero, and `fj` Adafruit Fruit Jam. The Fruit Jam differs from
 the other three in enough ways to get its own section; see section 12.
 
-A fifth, `pc` ClockworkPi PicoCalc with a Pico 2 or Pico 2 W, is **planned and
-not yet built**. See section 13 and `docs/PICOCALC.md`.
+A fifth, `pc` ClockworkPi PicoCalc with a Pico 2 or Pico 2 W, is **being
+ported, a phase at a time**. See section 13 and `docs/PICOCALC.md`.
 
 The emulation engine is **B-em** by Tom Walker, vendored in `src/bem/`. The parts
 that make it fit on a microcontroller come from Graham Sanderson's Pico fork of
@@ -738,10 +738,10 @@ default `m2` build; flash is on a 16 MB part here rather than 4 MB.
 Sweep `USB_HID` too: it changes which input drivers and which stdio backend are
 compiled in, so it is a second dimension and not a detail.
 
-Once the PicoCalc's Phase 1 lands, the sweep gains `pc` with its own
-`HDMI_DRIVER=LCD_SPI` and `USB_HID=0` only. The extended loop is in
-`docs/PICOCALC.md` section 11. Until then, `pc` does not configure, and leaving
-it out of the loop is correct.
+The sweep also covers `pc`, which has exactly one variant: `HDMI_DRIVER=LCD_SPI`,
+`USB_HID=0`. The extended loop is in `docs/PICOCALC.md` section 11. `pc` with any
+other driver, any other platform with `LCD_SPI`, and `pc` with `USB_HID=1` all
+fail at configure time, and that is intended.
 
 ```bash
 for p in m2 m1 z0 fj; do for d in HDMI_PIO_AUDIO HDMI_PIO COMPOSITE; do
@@ -990,11 +990,30 @@ while plugging in USB always recovers the board. To flash, do that, then copy
 installed on this machine, so `./flash.sh` will not run as it stands.
 
 
-## 13. The PicoCalc, planned
+## 13. The PicoCalc, in progress
 
 `PLATFORM=pc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
-2 W** (RP2350A, 4 MB flash). **Nothing is built yet.** Phase 0, the plan, was
-written on 2026-10-30. The brief is `REQUIREMENTS.md`, the plan is
+2 W** (RP2350A, 4 MB flash). Phase 0, the plan, was written on 2026-10-30.
+**Phase 1 is built and not yet run on hardware:** the board, a stub video
+driver, the UART0 console and a once-a-second `STAT` line. There is no picture
+and no keyboard yet.
+
+```bash
+PLATFORM=pc ./build.sh     # HDMI_DRIVER defaults to LCD_SPI; USB_HID=1 is rejected
+```
+
+The console runs at 115200 on UART0, and USB-CDC on the Pico's own port is a
+second copy.
+
+The `STAT` line reports:
+- `emu`: the emulated frame rate
+- `busy`: the share of each frame used before the pacer waited
+- `lcd`: presents per second
+- `scr`: a hash of BBC RAM &3000–&7FFF
+- `disc0`: the disc in drive 0
+- `drop`: console characters dropped
+
+A test disc at `/micro/disk/drivea.ssd` autoboots with no `micro.ini`. The brief is `REQUIREMENTS.md`, the plan is
 `docs/PICOCALC.md`, and decisions are logged in `docs/HANDOFF.md`. Update this
 section as phases land.
 

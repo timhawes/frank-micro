@@ -46,6 +46,12 @@
 #include "ui_draw.h"          /* boot error screen drawing primitives */
 #include "usbhid_wrapper.h"   /* usbhid_wrapper_init() — stubs to {} when off */
 
+#ifdef PLATFORM_PC
+#include "uart_stdio_nb.h"    /* the PicoCalc's non-blocking UART0 console   */
+#include "lcd_st7365p.h"      /* lcd_present_count, for the status line      */
+#include "frank_disc.h"       /* frank_disc_name(), for the status line      */
+#endif
+
 #ifndef FRANK_MICRO_VERSION
 #define FRANK_MICRO_VERSION "dev"
 #endif
@@ -72,6 +78,52 @@ extern int _al_mangled_main(int argc, char **argv);
  * also print the achieved frame rate and HDMI encoder heartbeat.
  */
 #define FRAME_PERIOD_US 20000u   /* 50 Hz */
+
+#ifdef PLATFORM_PC
+/* ── PicoCalc status line ───────────────────────────────────────────────
+ *
+ * The PicoCalc port is brought up without a picture for its first phase, so
+ * the firmware describes itself on the console instead: once a second, one
+ * line with the emulated frame rate, how much of each frame was spent before
+ * the pacer had to wait, how many frames reached the display driver, a hash
+ * of BBC screen memory, the disc in drive 0 and the console's own drop count.
+ *
+ * The hash covers &3000-&7FFF, which holds the screen in every mode from
+ * MODE 0 down to MODE 7's &7C00, so it changes whenever the picture does.
+ * FNV-1a, 20 KB, about 100 us once a second.
+ */
+static uint64_t s_pc_idle_us;   /* time spent in the pacer's wait */
+
+static uint32_t pc_screen_hash(void) {
+    extern uint8_t *ram;
+    if (!ram) return 0;
+    uint32_t h = 2166136261u;
+    for (uint32_t a = 0x3000u; a < 0x8000u; ++a) {
+        h ^= ram[a];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+static void pc_status_line(uint32_t frames, uint64_t dt_us) {
+    static uint32_t seconds = 0;
+    static uint32_t lcd_last = 0;
+    uint32_t lcd_now = lcd_present_count;
+    uint32_t fps = (uint32_t)((frames * 1000000ull + dt_us / 2) / dt_us);
+    uint32_t pct = (uint32_t)((frames * 2000000ull + dt_us / 2) / dt_us);  /* of 50 Hz */
+    uint64_t idle = s_pc_idle_us > dt_us ? dt_us : s_pc_idle_us;
+    uint32_t busy = (uint32_t)(((dt_us - idle) * 100u + dt_us / 2) / dt_us);
+    const char *disc = frank_disc_name(0);
+    seconds++;
+    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu scr=%08lx disc0=%s drop=%lu\n",
+           (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
+           (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
+           (unsigned long)pc_screen_hash(), disc ? disc : "-",
+           (unsigned long)uart_stdio_nb_dropped());
+    lcd_last = lcd_now;
+    s_pc_idle_us = 0;
+}
+#endif /* PLATFORM_PC */
 
 void frank_perf_tick(void) {
     static uint32_t frames = 0;
@@ -195,6 +247,10 @@ void frank_perf_tick(void) {
     } else if (next_frame == 0) {
         next_frame = now + FRAME_PERIOD_US;
     } else {
+#ifdef PLATFORM_PC
+        if ((int64_t)(next_frame - now) > 0)
+            s_pc_idle_us += next_frame - now;
+#endif
         if ((int64_t)(next_frame - now) > 0)
             busy_wait_until(from_us_since_boot(next_frame));
         next_frame += FRAME_PERIOD_US;
@@ -235,6 +291,9 @@ void frank_perf_tick(void) {
         printf("PERF: emu=%.1f fps (%.0f%% real-time)\n", (double)fps, (double)pct);
 #endif
 #endif /* FRANK_PERF_LOG */
+#ifdef PLATFORM_PC
+        pc_status_line(frames, dt);
+#endif
         frames = 0;
         t_last = time_us_64();
     }
@@ -407,6 +466,11 @@ int main(void) {
 #endif
 
     stdio_init_all();
+#ifdef PLATFORM_PC
+    /* The PicoCalc's console.  Not pico_stdio_uart, whose writes spin while
+     * the TX FIFO is full; see drivers/uart_stdio_nb.h. */
+    uart_stdio_nb_init(CONSOLE_UART, CONSOLE_TX_PIN, CONSOLE_RX_PIN, CONSOLE_BAUD);
+#endif
 #ifndef USB_HID_ENABLED
     /* Wait for USB-CDC serial to enumerate so early printf output is visible.
      * Skipped when USB HID is enabled: the native USB port is in host mode,
@@ -424,14 +488,23 @@ int main(void) {
 
     crash_handler_install();
 
-#ifdef PICO_DEFAULT_LED_PIN
+    /* Not on the PicoCalc: one UF2 there serves the Pico 2 and the Pico 2 W,
+     * and on a W GPIO 25 is the wireless chip's SPI chip select, not an LED. */
+#if defined(PICO_DEFAULT_LED_PIN) && !defined(PLATFORM_PC)
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, 1);
 #endif
 
+#ifdef PLATFORM_PC
+    /* The PicoCalc has PSRAM, but it is not used, and the probe must not run:
+     * with no pin declared it would take GPIO 0, which is the console's TX.
+     * FatFs falls back to malloc() when PSRAM is unavailable. */
+    printf("PSRAM: not used on this board\n");
+#else
     bool psram_ok = psram_init(get_psram_pin());
     printf("PSRAM: %s\n", psram_ok ? "OK" : "not present (OK)");
+#endif
 
     /* Bare switch and socket contacts to ground, with no external resistors,
      * so they need internal pull-ups.  Only the Fruit Jam has these today,
@@ -496,6 +569,8 @@ int main(void) {
     SELECT_VGA = false;
 #elif defined(HDMI_PIO_AUDIO)
     SELECT_VGA = false;
+#elif defined(VIDEO_LCD_SPI)
+    /* PicoCalc SPI LCD: no ribbon and nothing to detect. */
 #elif defined(VIDEO_COMPOSITE)
     /* Composite TV owns the video path on Core 1 (graphics_init launches it).
      * No HDMI/VGA ribbon autodetect — testPins() is stubbed in the TV shim. */

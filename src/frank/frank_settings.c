@@ -65,7 +65,12 @@ static const char *AUDIO_LABELS[]   = { "HDMI", "I2S", "PWM" };
  *   HDMI_PIO_AUDIO, HSTX — HDMI / I2S / PWM (embedded HDMI audio is available).
  *   HDMI_PIO, COMPOSITE — I2S / PWM only (no HDMI-embedded audio path), so
  *   the menu starts at FRANK_AUDIO_I2S and never offers "HDMI". */
-#if defined(PLATFORM_FJ)
+#if defined(PLATFORM_PC)
+   /* PicoCalc: PWM is the only audio output on the board, so the menu offers
+    * nothing else.  PWM is last in the enum, so first=PWM, count=1. */
+#  define AUDIO_FIRST_CHOICE  FRANK_AUDIO_PWM
+#  define AUDIO_NUM_CHOICES   1
+#elif defined(PLATFORM_FJ)
    /* Fruit Jam: the headphone jack and the onboard speaker are both behind the
     * TLV320DAC3100 codec, which is an I2S sink, so there is no PWM output on
     * the board at all and "PWM" comes out of the menu.  The enum order (HDMI,
@@ -216,7 +221,11 @@ static void apply_monitor(void) {
 }
 
 void frank_settings_apply_live(void) {
-#if !defined(HDMI_PIO_AUDIO) && !defined(HDMI_HSTX)
+#if defined(PLATFORM_PC)
+    /* PicoCalc: PWM is the only backend.  A micro.ini carried over from
+     * another board may name HDMI or I2S; fold either onto PWM. */
+    g_frank_settings.audio_driver = FRANK_AUDIO_PWM;
+#elif !defined(HDMI_PIO_AUDIO) && !defined(HDMI_HSTX)
     /* HDMI audio is unavailable in the HDMI_PIO build; fold any persisted
      * "HDMI" selection (e.g. from a micro.ini written by an HDMI_PIO_AUDIO
      * build) onto the I2S DAC so the option is never silently dead. */

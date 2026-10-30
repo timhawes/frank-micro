@@ -22,8 +22,10 @@
 #  include "board_m2.h"
 #elif defined(PLATFORM_FJ)
 #  include "board_fj.h"
+#elif defined(PLATFORM_PC)
+#  include "board_pc.h"
 #else
-#  error "No platform defined — set -DPLATFORM=m1|m2|z0|fj in CMake"
+#  error "No platform defined — set -DPLATFORM=m1|m2|z0|fj|pc in CMake"
 #endif
 
 #ifndef CPU_CLOCK_MHZ

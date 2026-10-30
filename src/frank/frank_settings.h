@@ -58,7 +58,11 @@ typedef enum {
  *   HDMI_PIO_AUDIO — audio is embedded in the HDMI stream (FRANK_AUDIO_HDMI).
  *   HSTX           — likewise, in HSTX data islands.
  *   HDMI_PIO       — no HDMI-audio path exists, so default to the I2S DAC. */
-#if defined(HDMI_PIO_AUDIO) || defined(HDMI_HSTX)
+#if defined(PLATFORM_PC)
+   /* PicoCalc: the speakers and headphone jack are driven by PWM, and there
+    * is no other audio output on the board. */
+#  define FRANK_AUDIO_DEFAULT FRANK_AUDIO_PWM
+#elif defined(HDMI_PIO_AUDIO) || defined(HDMI_HSTX)
 #  define FRANK_AUDIO_DEFAULT FRANK_AUDIO_HDMI
 #else
 #  define FRANK_AUDIO_DEFAULT FRANK_AUDIO_I2S

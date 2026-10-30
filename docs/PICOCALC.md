@@ -514,9 +514,12 @@ This document, the `CLAUDE.md` section, the `docs/HANDOFF.md` entries.
 - A once-a-second line from `frank_perf_tick()`: frame count, emulation
   speed as a percentage of 50 Hz, and a checksum of BBC RAM &3000–&7FFF.
 
+**Built 2026-10-30, on branch `picocalc-phase1`; not yet run on hardware.**
+
 **Exit:** the console shows 100% speed and the SD card mounts. The checksum
-changes when a disc autoboots. For this phase the disc is set by
-`disk_a` in `micro.ini`, because there is no keyboard to use the loader.
+changes when a disc autoboots. For this phase the disc is
+`/micro/disk/drivea.ssd`, which `frank_disk_autoload()` mounts with no
+`micro.ini`, because there is no keyboard to use the loader.
 
 ### Phase 2: first picture
 
@@ -690,7 +693,7 @@ and is the first step of Phase 1.
 | Read, primary | Every GPIO in section 2.1, from the schematic's Pico-socket net labels. The UART1–STM32 link. The PSRAM quad lines. The CH340C and WAS7227 part numbers. Keyboard: address, `WRITE_MASK`, the FIFO-on-write behaviour, the missing CFG write case, the default config, the key tables, the mod handling, the Alt swallowing, `BIOSVERSION 0x16`. ST7365P: `TSCYCW` 66 ns, the 65K SPI format. Pico 2 W GPIO roles. Every frank-micro symbol cited |
 | Read, but from text extraction | `TE` has no net. That is the absence of a label in `pdftotext` output, so it is weaker than a positive read. Confirm visually |
 | Derived | Bandwidth and frame-rate table (section 5.1). SPI divisor steps. RAM estimate. That `WL_ON` stays low. That `SW701` selects the USB-C serial path |
-| Assumed | That the unit runs firmware 0x16. That the I²C controller's queued transactions suit the STM32's Wire slave with no gap. That `pico2.h` puts the default UART on GPIO 0/1 with `PICO_DEFAULT_LED_PIN` 25; recalled, check when the SDK is installed |
+| Assumed | That the unit runs firmware 0x16. That the I²C controller's queued transactions suit the STM32's Wire slave with no gap. (`pico2.h`'s default UART on GPIO 0/1 and LED on 25 was assumed here, and read from SDK 2.2.0 on 2026-10-30) |
 
 ### Sources
 
