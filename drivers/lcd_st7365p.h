@@ -19,4 +19,9 @@
  * its rate. */
 extern volatile uint32_t lcd_present_count;
 
+/* Incremented by core 1 each time it finishes sending a frame to the panel.
+ * Lower than lcd_present_count when the SPI link cannot keep up; core 1 then
+ * skips to the newest frame. */
+extern volatile uint32_t lcd_frames_sent;
+
 #endif /* LCD_ST7365P_H */

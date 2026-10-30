@@ -1129,6 +1129,79 @@ Files can be put on the card with no card reader: stop at the line after
 `f_mkdir`, `f_open`, `f_write` and `f_close` on the target. That is how
 `drivea.ssd` got there, and a read-back compared equal.
 
+### 2026-10-30: PicoCalc phase 2, the panel driven and MODE 7 at 100%
+
+**The LCD driver.** `drivers/lcd_st7365p.c` now drives the panel:
+
+- **Init sequence.** It is ClockworkPi's `pico_lcd_init()` at `fdcfe2c`, byte
+  for byte, with one change: `COLMOD` is 0x55 (RGB565) rather than 0x66, so a
+  pixel is two bytes.
+- **Core 1 owns the panel.** The init's 460 ms of sleeps run there, so core 0
+  boots without waiting. Core 1 then sends every row of the newest presented
+  frame with blocking SPI at 24 MHz.
+- **Push rate: 14–15 frames a second.** The estimate was 18; the gap is per-row
+  conversion and call overhead. DMA and changed-row tracking are Phase 5.
+- **Core 0 is unaffected.** `graphics_set_buffer()` is still a pointer store.
+
+**MODE 7 speed.** Forty gdb backtraces, taken at irregular intervals on the
+MODE 7 screen, split core 0's time like this:
+
+- **About half:** frank's teletext blit, `blit_row_teletext()` with `lum5()`
+  and `rgb555_to_bbc()`, running from flash.
+- **About 40%:** B-em's teletext rasteriser.
+- **The rest:** almost none of it was the 6502.
+
+The LCD build now has its own blit in `src/frank/frank_gui.c`, under
+`VIDEO_LCD_SPI`, built on three changes:
+
+- **A 32 KB lookup table.** It maps RGB555 to `lum5 << 3 | bbc_index`. The
+  key squeezes out the unused bit 5, which an exhaustive host check confirmed
+  is lossless.
+- **A fast path for uniform cells.** A cell whose six samples are the same
+  pixel is written as background.
+- **Word stores from RAM** to clear the work rows. `memset()` was 12% of the
+  frame, from flash.
+
+The scanline hooks also run from RAM on this build. The bitmap blit uses the
+same table.
+
+**The output is byte-identical.** Framebuffers dumped over SWD on the BASIC
+screen, from the old and new blits, contain exactly the same two images:
+cursor on and cursor off.
+
+Measured, `STAT` at 1-second intervals:
+
+| Screen | Before | After |
+|---|---|---|
+| Master BASIC prompt, MODE 7 | 90–91%, no idle | 100%, busy 69% |
+| `bs-twisted` opening, MODE 7 | 92% | 100%, busy 74% |
+| `bs-twisted` heaviest raster section | 83–89% | 100%, busy 78–87% |
+| `bs-twisted` palette-effect section | 98–101%, pinned | 100%, busy 65–70% |
+
+What remains on the busiest sections is B-em's own work:
+`invalidate_tiles_for_palette_index()`, and `__popcountsi2` from libgcc,
+which runs from flash. B-em stays untouched.
+
+**RAM** is 313,212 bytes (59.7%), up 35 KB from Phase 1, almost all of it the
+table. N5's ceiling is 393,000.
+
+**Frozen boards:** the out-of-tree sweep was rerun after the change. All 22
+existing variants build, and every `.bin` is byte-identical to the Phase 1
+baseline.
+
+**Not yet done:** nobody has looked at the panel. Colour and orientation are
+unchecked. `LCD_SWAP_RB` flips red and blue if needed.
+
+**Debugging notes:**
+
+- This FatFs build has no `f_rename` or `f_unlink`. To boot to BASIC,
+  `drivea.ssd` was overwritten with a 512-byte blank catalogue (boot option 0,
+  800 sectors), then restored from `src/bem/pico/discs/bs-twisted.ssd`.
+- Once, a `reset run` straight after a gdb session that had called into the
+  firmware left core 0 spinning at boot on the SDK's timer spin lock (lock 10),
+  with core 1 still in the bootrom. Three further resets booted cleanly. Treat
+  it as an artefact of the debug session unless it recurs from a power-on.
+
 ## Dead ends, so nobody retries them
 
 ### `drivers/HDMI_vga_hstx.c` is not a starting point for an HSTX driver

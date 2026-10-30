@@ -994,10 +994,11 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 
 `PLATFORM=picocalc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
 2 W** (RP2350A, 4 MB flash). Phase 0, the plan, was written on 2026-10-30.
-**Phase 1 runs on hardware** (a Pico 2 W, 2026-10-30): the board, a stub video
-driver, the UART0 console and a once-a-second `STAT` line. SD, PWM audio and
-disc autoboot work. MODE 7 runs at 92 to 94%, bitmap modes at 100%. There is
-no picture and no keyboard yet. **Switch the PicoCalc on whenever the Pico
+**Phases 1 and 2 run on hardware** (a Pico 2 W, 2026-10-30): the board, the
+UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
+autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
+a second. Emulation is at 100% in every mode, MODE 7 included. There is no
+keyboard yet. **Switch the PicoCalc on whenever the Pico
 runs**: an unpowered card reads back as zeros until all power is removed.
 
 ```bash
@@ -1011,6 +1012,7 @@ The `STAT` line reports:
 - `emu`: the emulated frame rate
 - `busy`: the share of each frame used before the pacer waited
 - `lcd`: presents per second
+- `push`: frames sent to the panel per second
 - `scr`: a hash of BBC RAM &3000–&7FFF
 - `disc0`: the disc in drive 0
 - `drop`: console characters dropped

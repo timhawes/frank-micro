@@ -534,6 +534,13 @@ The console reports display frames per second.
 boot screen) and in one bitmap mode, with correct colours. Since there is no
 keyboard yet, a disc whose `!BOOT` runs `MODE 1` gives the bitmap mode.
 
+Also carried in from Phase 1: MODE 7 at 100%.
+
+**Built and run 2026-10-30, on branch `picocalc-phase2`.** The panel is driven
+and the console shows 14–15 frames a second sent to it. Every emulated frame
+now runs at 100%, MODE 7 included, at 69–74% busy. **The picture itself has not
+yet been looked at**, so the colour and orientation checks are still open.
+
 ### Phase 3: keyboard
 
 `drivers/picocalc_kbd.c` and the section 7 layer. Every event goes to the
@@ -577,9 +584,10 @@ build, and the README section.
 framebuffers. The closest existing build is `HDMI_PIO` on m2, at 297,268 bytes
 (56.7%), and it carries the PIO HDMI line buffers and tables. The LCD driver
 adds about 3.3 KB: a 512-byte RGB565 table, two 640-byte line buffers, 1 KB of
-row sums, and the UART rings. Expect roughly 290–300 KB, well inside N5's
-ceiling, the `COMPOSITE` build at 393,000 bytes (75%). This is an estimate, to
-be replaced by the linker's figure in Phase 1. Core 1's LCD loop runs from RAM
+row sums, and the UART rings. Measured: 277,792 bytes in Phase 1, and
+313,212 (59.7%) in Phase 2, which adds the 32 KB RGB555 lookup table that
+makes the blit cheap enough for MODE 7 (see `docs/HANDOFF.md`). Well inside
+N5's ceiling, the `COMPOSITE` build at 393,000 bytes (75%). Core 1's LCD loop runs from RAM
 (`__not_in_flash_func`), per `CLAUDE.md` constraint 4, though it is no longer
 real-time.
 
@@ -621,7 +629,7 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 | Is the `TE` pin really unconnected, rather than lost in text extraction? | Tear-free display | A visual check of the schematic's LCD connector |
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional; power draw | Current draw, W against non-W |
 | Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | Phase 3, against B-em's own BREAK handling |
-| Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | Copy the sample, then check |
+| Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | Copied from the sample in Phase 2; awaiting a look at the panel. `LCD_SWAP_RB` in `drivers/lcd_st7365p.c` flips red and blue |
 | Is a Phase 6 battery reading percent alone, or has it a charging flag? | Status line wording | Read `battery.ino` in Phase 6 |
 
 ---

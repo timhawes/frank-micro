@@ -48,7 +48,7 @@
 
 #ifdef PLATFORM_PICOCALC
 #include "uart_stdio_nb.h"    /* the PicoCalc's non-blocking UART0 console   */
-#include "lcd_st7365p.h"      /* lcd_present_count, for the status line      */
+#include "lcd_st7365p.h"      /* lcd_present_count, lcd_frames_sent          */
 #include "frank_disc.h"       /* frank_disc_name(), for the status line      */
 #endif
 
@@ -107,20 +107,22 @@ static uint32_t pc_screen_hash(void) {
 
 static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     static uint32_t seconds = 0;
-    static uint32_t lcd_last = 0;
+    static uint32_t lcd_last = 0, push_last = 0;
     uint32_t lcd_now = lcd_present_count;
+    uint32_t push_now = lcd_frames_sent;
     uint32_t fps = (uint32_t)((frames * 1000000ull + dt_us / 2) / dt_us);
     uint32_t pct = (uint32_t)((frames * 2000000ull + dt_us / 2) / dt_us);  /* of 50 Hz */
     uint64_t idle = s_pc_idle_us > dt_us ? dt_us : s_pc_idle_us;
     uint32_t busy = (uint32_t)(((dt_us - idle) * 100u + dt_us / 2) / dt_us);
     const char *disc = frank_disc_name(0);
     seconds++;
-    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu scr=%08lx disc0=%s drop=%lu\n",
+    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu\n",
            (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
            (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
-           (unsigned long)pc_screen_hash(), disc ? disc : "-",
+           (unsigned long)(push_now - push_last), (unsigned long)pc_screen_hash(), disc ? disc : "-",
            (unsigned long)uart_stdio_nb_dropped());
     lcd_last = lcd_now;
+    push_last = push_now;
     s_pc_idle_us = 0;
 }
 #endif /* PLATFORM_PICOCALC */
