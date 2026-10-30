@@ -513,6 +513,14 @@ The user found `pc` confusing. Renamed throughout before phase 1 was pushed:
 say `pc` and are left as written. Read `pc` in them as `picocalc`. The branch
 names were already `picocalc-phaseN` and are unchanged.
 
+### 2026-10-30: PicoCalc phase 1 signed off, with MODE 7 below 100%
+
+The user signed off phase 1 on the hardware results recorded under findings:
+console, SD mount, PWM audio and disc autoboot all pass. The speed exit was
+met in bitmap modes only; MODE 7 runs at 92 to 94%. That shortfall moves to
+phase 2, whose LCD row conversion replaces the slow step, and phase 2's exit
+should include MODE 7 at 100%. Phase 2 starts on branch `picocalc-phase2`.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path

@@ -514,7 +514,7 @@ This document, the `CLAUDE.md` section, the `docs/HANDOFF.md` entries.
 - A once-a-second line from `frank_perf_tick()`: frame count, emulation
   speed as a percentage of 50 Hz, and a checksum of BBC RAM &3000–&7FFF.
 
-**Built and run on a Pico 2 W, 2026-10-30, on branch `picocalc-phase1`.** The
+**Signed off 2026-10-30, after running on a Pico 2 W; branch `picocalc-phase1`.** The
 console, the SD mount, PWM audio and the disc autoboot all work. Speed is 100%
 in bitmap modes and 92 to 94% in MODE 7, CPU-bound in the teletext rasteriser
 and the row conversion; Phase 2's LCD blit is where to win that back. See
