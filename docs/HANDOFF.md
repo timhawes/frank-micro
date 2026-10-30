@@ -1192,6 +1192,46 @@ baseline.
 **Not yet done:** nobody has looked at the panel. Colour and orientation are
 unchecked. `LCD_SWAP_RB` flips red and blue if needed.
 
+### 2026-10-30: `spi_write_blocking()` returns before its last byte has left
+
+The first Phase 2 build showed uniform noise on the panel, even though
+`STAT` said frames were being sent.
+
+**What SWD readback showed.** The panel's status registers had taken
+everything: `RDDPM` 0x9C, `MADCTL` 0x48, `COLMOD` 0x55. But `RAMRD` returned
+noise everywhere, even outside the BBC frame, where the clear should have left
+black.
+
+**What isolated it.** Pixel writes issued by hand from gdb read back correctly
+at every clock from 2 to 24 MHz. So the panel and the wiring were fine, and
+the firmware's own writes were going wrong.
+
+**The cause.**
+
+- The SDK's `spi_write_blocking()` checks the PL022 busy flag immediately
+  after its final FIFO write.
+- From RAM at 252 MHz, core 1 gets there before the flag has risen, so the
+  call returns while the byte is still shifting out.
+- The window-and-`RAMWR` code was inlined into the RAM-resident core 1 loop,
+  so DC went high while `RAMWR` was still on the wire.
+- The panel samples DC on the last bit, so it took `RAMWR` as data. It never
+  entered pixel-write mode, and every pixel was discarded.
+- The init's register writes survived only because `lcd_cmd_data()` ran from
+  flash, slowly enough to hide the race. ClockworkPi's sample also writes from
+  flash.
+
+**The fix.** `lcd_send_sync()` uses `spi_write_read_blocking()`, which cannot
+return until every byte has been clocked back in. Anything followed by a DC or
+CS change goes through it: commands, parameters, and the last row before CS
+rises. Bulk rows still use `spi_write_blocking()`, since no pin changes between
+them.
+
+**After the fix,** `RAMRD` shows black outside the frame and demo colours
+inside. The push rate and emulation speed are unchanged.
+
+**The rule for any later SPI code here, Phase 5's DMA included:** never move
+DC or CS on the strength of `spi_write_blocking()` returning.
+
 **Debugging notes:**
 
 - This FatFs build has no `f_rename` or `f_unlink`. To boot to BASIC,

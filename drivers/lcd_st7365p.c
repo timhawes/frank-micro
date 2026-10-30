@@ -65,20 +65,43 @@ static bool      s_greyscale  = false;
 static inline void lcd_cs(bool level) { gpio_put(LCD_PIN_CS, level); }
 static inline void lcd_dc(bool level) { gpio_put(LCD_PIN_DC, level); }
 
+/*
+ * Send bytes and return only once the last one has left the shifter.
+ *
+ * Anything followed by a change of DC or CS has to go through here, not
+ * spi_write_blocking().  That function checks the busy flag immediately
+ * after its last FIFO write, and from RAM at 252 MHz it can look before the
+ * flag has risen, so it returns while the byte is still being shifted out.
+ * The panel samples DC on the last bit of each byte, so raising DC early
+ * turned RAMWR into a data byte: the panel never entered pixel-write mode
+ * and every pixel was dropped.  Register writes survived only because they
+ * ran from flash, which is slower.  Waiting for the bytes to be clocked back
+ * in cannot return early.
+ */
+static void lcd_send_sync(const uint8_t *src, size_t len) {
+    static uint8_t sink[LCD_W * 2];
+    while (len) {
+        size_t n = len < sizeof sink ? len : sizeof sink;
+        spi_write_read_blocking(LCD_SPI_PORT, src, sink, n);
+        src += n;
+        len -= n;
+    }
+}
+
 static void lcd_cmd(uint8_t cmd) {
     lcd_dc(0);
     lcd_cs(0);
-    spi_write_blocking(LCD_SPI_PORT, &cmd, 1);
+    lcd_send_sync(&cmd, 1);
     lcd_cs(1);
 }
 
 static void lcd_cmd_data(uint8_t cmd, const uint8_t *data, size_t len) {
     lcd_dc(0);
     lcd_cs(0);
-    spi_write_blocking(LCD_SPI_PORT, &cmd, 1);
+    lcd_send_sync(&cmd, 1);
     if (len) {
         lcd_dc(1);
-        spi_write_blocking(LCD_SPI_PORT, data, len);
+        lcd_send_sync(data, len);
     }
     lcd_cs(1);
 }
@@ -93,7 +116,7 @@ static void lcd_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t ramwr = 0x2C;             /* RAMWR */
     lcd_dc(0);
     lcd_cs(0);
-    spi_write_blocking(LCD_SPI_PORT, &ramwr, 1);
+    lcd_send_sync(&ramwr, 1);
     lcd_dc(1);
 }
 
@@ -140,8 +163,9 @@ static uint16_t s_line[LCD_W];
 static void lcd_clear(void) {
     for (int x = 0; x < LCD_W; x++) s_line[x] = 0;
     lcd_window(0, 0, LCD_W - 1, LCD_H - 1);
-    for (int y = 0; y < LCD_H; y++)
+    for (int y = 0; y < LCD_H - 1; y++)
         spi_write_blocking(LCD_SPI_PORT, (const uint8_t *)s_line, sizeof s_line);
+    lcd_send_sync((const uint8_t *)s_line, sizeof s_line);   /* last row: before CS rises */
     lcd_cs(1);
 }
 
@@ -153,7 +177,10 @@ static void __not_in_flash_func(lcd_push_frame)(const uint8_t *fb) {
         const uint8_t *src = fb + y * 320;
         for (int x = 0; x < LCD_W; x++)
             s_line[x] = s_rgb565[src[x]];
-        spi_write_blocking(LCD_SPI_PORT, (const uint8_t *)s_line, sizeof s_line);
+        if (y < 255)
+            spi_write_blocking(LCD_SPI_PORT, (const uint8_t *)s_line, sizeof s_line);
+        else
+            lcd_send_sync((const uint8_t *)s_line, sizeof s_line); /* before CS rises */
     }
     lcd_cs(1);
 }
