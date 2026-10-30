@@ -23,7 +23,7 @@ Four boards are supported: `m1` Murmulator 1.x, `m2` Murmulator 2.0, `z0`
 Waveshare RP2350-PiZero, and `fj` Adafruit Fruit Jam. The Fruit Jam differs from
 the other three in enough ways to get its own section; see section 12.
 
-A fifth, `pc` ClockworkPi PicoCalc with a Pico 2 or Pico 2 W, is **being
+A fifth, `picocalc` ClockworkPi PicoCalc with a Pico 2 or Pico 2 W, is **being
 ported, a phase at a time**. See section 13 and `docs/PICOCALC.md`.
 
 The emulation engine is **B-em** by Tom Walker, vendored in `src/bem/`. The parts
@@ -738,9 +738,9 @@ default `m2` build; flash is on a 16 MB part here rather than 4 MB.
 Sweep `USB_HID` too: it changes which input drivers and which stdio backend are
 compiled in, so it is a second dimension and not a detail.
 
-The sweep also covers `pc`, which has exactly one variant: `HDMI_DRIVER=LCD_SPI`,
-`USB_HID=0`. The extended loop is in `docs/PICOCALC.md` section 11. `pc` with any
-other driver, any other platform with `LCD_SPI`, and `pc` with `USB_HID=1` all
+The sweep also covers `picocalc`, which has exactly one variant: `HDMI_DRIVER=LCD_SPI`,
+`USB_HID=0`. The extended loop is in `docs/PICOCALC.md` section 11. `picocalc` with any
+other driver, any other platform with `LCD_SPI`, and `picocalc` with `USB_HID=1` all
 fail at configure time, and that is intended.
 
 ```bash
@@ -992,14 +992,14 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 
 ## 13. The PicoCalc, in progress
 
-`PLATFORM=pc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
+`PLATFORM=picocalc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
 2 W** (RP2350A, 4 MB flash). Phase 0, the plan, was written on 2026-10-30.
 **Phase 1 is built and not yet run on hardware:** the board, a stub video
 driver, the UART0 console and a once-a-second `STAT` line. There is no picture
 and no keyboard yet.
 
 ```bash
-PLATFORM=pc ./build.sh     # HDMI_DRIVER defaults to LCD_SPI; USB_HID=1 is rejected
+PLATFORM=picocalc ./build.sh     # HDMI_DRIVER defaults to LCD_SPI; USB_HID=1 is rejected
 ```
 
 The console runs at 115200 on UART0, and USB-CDC on the Pico's own port is a
@@ -1025,7 +1025,7 @@ What makes it different from every other board:
   rather than a real-time one. Core 1 pushes only the rows that changed, and
   the emulator never waits for it. The panel's `TE` pin is not wired, so
   there is no tear-free sync. The driver is `drivers/lcd_st7365p.c`, built as
-  `HDMI_DRIVER=LCD_SPI`. That value is forced on `pc` and rejected elsewhere.
+  `HDMI_DRIVER=LCD_SPI`. That value is forced on `picocalc` and rejected elsewhere.
 - **The keyboard reports characters, not positions.** An STM32 at I²C `0x1F`
   on `i2c1`, GPIO 6 and 7. Its shipped firmware (0x16) **ignores writes to the
   config register**, so Shift always changes the reported code, and the
@@ -1045,11 +1045,11 @@ Hazards:
 
 - **Do not let the PSRAM probe run.** With no PSRAM pin declared,
   `board_config.h` defaults it to GPIO 0, the console's TX pin. Compile the
-  probe out on `pc`. The board's 8 MB PSRAM (GPIO 2 to 5, 20, 21) is not
+  probe out on `picocalc`. The board's 8 MB PSRAM (GPIO 2 to 5, 20, 21) is not
   used.
 - **Never touch GPIO 23, 24, 25 or 29.** On a Pico 2 W they belong to the
   CYW43 wireless chip, and GPIO 25 is its chip select, not an LED. The
-  `PICO_DEFAULT_LED_PIN` block in `main()` must be gated out on `pc`. One UF2,
+  `PICO_DEFAULT_LED_PIN` block in `main()` must be gated out on `picocalc`. One UF2,
   built with `PICO_BOARD=pico2`, has to run on both modules.
 - **GPIO 8 and 9 are a UART link to the STM32.** m1 and m2 use GPIO 8 as their
   PSRAM chip select, so do not copy their headers.

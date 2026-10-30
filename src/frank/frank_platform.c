@@ -46,7 +46,7 @@
 #include "ui_draw.h"          /* boot error screen drawing primitives */
 #include "usbhid_wrapper.h"   /* usbhid_wrapper_init() — stubs to {} when off */
 
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
 #include "uart_stdio_nb.h"    /* the PicoCalc's non-blocking UART0 console   */
 #include "lcd_st7365p.h"      /* lcd_present_count, for the status line      */
 #include "frank_disc.h"       /* frank_disc_name(), for the status line      */
@@ -79,7 +79,7 @@ extern int _al_mangled_main(int argc, char **argv);
  */
 #define FRAME_PERIOD_US 20000u   /* 50 Hz */
 
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
 /* ── PicoCalc status line ───────────────────────────────────────────────
  *
  * The PicoCalc port is brought up without a picture for its first phase, so
@@ -123,7 +123,7 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     lcd_last = lcd_now;
     s_pc_idle_us = 0;
 }
-#endif /* PLATFORM_PC */
+#endif /* PLATFORM_PICOCALC */
 
 void frank_perf_tick(void) {
     static uint32_t frames = 0;
@@ -247,7 +247,7 @@ void frank_perf_tick(void) {
     } else if (next_frame == 0) {
         next_frame = now + FRAME_PERIOD_US;
     } else {
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
         if ((int64_t)(next_frame - now) > 0)
             s_pc_idle_us += next_frame - now;
 #endif
@@ -291,7 +291,7 @@ void frank_perf_tick(void) {
         printf("PERF: emu=%.1f fps (%.0f%% real-time)\n", (double)fps, (double)pct);
 #endif
 #endif /* FRANK_PERF_LOG */
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
         pc_status_line(frames, dt);
 #endif
         frames = 0;
@@ -466,7 +466,7 @@ int main(void) {
 #endif
 
     stdio_init_all();
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
     /* The PicoCalc's console.  Not pico_stdio_uart, whose writes spin while
      * the TX FIFO is full; see drivers/uart_stdio_nb.h. */
     uart_stdio_nb_init(CONSOLE_UART, CONSOLE_TX_PIN, CONSOLE_RX_PIN, CONSOLE_BAUD);
@@ -490,13 +490,13 @@ int main(void) {
 
     /* Not on the PicoCalc: one UF2 there serves the Pico 2 and the Pico 2 W,
      * and on a W GPIO 25 is the wireless chip's SPI chip select, not an LED. */
-#if defined(PICO_DEFAULT_LED_PIN) && !defined(PLATFORM_PC)
+#if defined(PICO_DEFAULT_LED_PIN) && !defined(PLATFORM_PICOCALC)
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, 1);
 #endif
 
-#ifdef PLATFORM_PC
+#ifdef PLATFORM_PICOCALC
     /* The PicoCalc has PSRAM, but it is not used, and the probe must not run:
      * with no pin declared it would take GPIO 0, which is the console's TX.
      * FatFs falls back to malloc() when PSRAM is unavailable. */

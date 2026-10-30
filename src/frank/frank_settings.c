@@ -65,7 +65,7 @@ static const char *AUDIO_LABELS[]   = { "HDMI", "I2S", "PWM" };
  *   HDMI_PIO_AUDIO, HSTX — HDMI / I2S / PWM (embedded HDMI audio is available).
  *   HDMI_PIO, COMPOSITE — I2S / PWM only (no HDMI-embedded audio path), so
  *   the menu starts at FRANK_AUDIO_I2S and never offers "HDMI". */
-#if defined(PLATFORM_PC)
+#if defined(PLATFORM_PICOCALC)
    /* PicoCalc: PWM is the only audio output on the board, so the menu offers
     * nothing else.  PWM is last in the enum, so first=PWM, count=1. */
 #  define AUDIO_FIRST_CHOICE  FRANK_AUDIO_PWM
@@ -221,7 +221,7 @@ static void apply_monitor(void) {
 }
 
 void frank_settings_apply_live(void) {
-#if defined(PLATFORM_PC)
+#if defined(PLATFORM_PICOCALC)
     /* PicoCalc: PWM is the only backend.  A micro.ini carried over from
      * another board may name HDMI or I2S; fold either onto PWM. */
     g_frank_settings.audio_driver = FRANK_AUDIO_PWM;

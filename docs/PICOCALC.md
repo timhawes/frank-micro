@@ -3,7 +3,7 @@
 Date: 2026-10-30
 Scope: what has to change in `frank-micro` to build and run on a ClockworkPi
 PicoCalc (mainboard v2.0) fitted with a Raspberry Pi Pico 2 or Pico 2 W, as a
-new board `pc`.
+new board `picocalc`.
 Method: the PicoCalc side was read from ClockworkPi's own repository,
 `clockworkpi/PicoCalc` at commit `fdcfe2c`. That covers the mainboard v2.0
 schematic (PDF, text-extracted), the ST7365P datasheet, the keyboard MCU
@@ -48,7 +48,7 @@ Three parts are new:
 | Keyboard: a non-blocking I²C FIFO reader, and a PicoCalc-to-BBC layer that handles the firmware's shifted codes | `drivers/picocalc_kbd.c`, `src/frank/frank_keyboard.c` | ~350 lines |
 | A UART stdio driver that never blocks core 0 | `drivers/uart_stdio_nb.c` | ~120 lines |
 
-Plus `src/board_pc.h`, a `board_config.h` branch, CMake and `build.sh`.
+Plus `src/board_picocalc.h`, a `board_config.h` branch, CMake and `build.sh`.
 
 Findings that change the brief:
 
@@ -62,7 +62,7 @@ Findings that change the brief:
    section 5.1.
 3. **The PSRAM probe would take the console pin.** With no PSRAM pin declared,
    `board_config.h` defaults it to GPIO 0, which on this board is UART0 TX. The
-   probe has to be compiled out on `pc`, not just left at its default.
+   probe has to be compiled out on `picocalc`, not just left at its default.
 4. **Ten keys are layers, not keys.** F6–F10, BREAK, HOME, END, PgUp, PgDn and
    Insert exist only as the Shift layer of another key.
 
@@ -137,10 +137,10 @@ the four:
 - No PicoCalc function uses them (section 2.1).
 - `main()` in `src/frank/frank_platform.c`, in its `PICO_DEFAULT_LED_PIN`
   block, drives GPIO 25 high. On a W that is the CYW43 chip select. Phase 1
-  gates the block out on `pc`. The other boards' preprocessor output is
+  gates the block out on `picocalc`. The other boards' preprocessor output is
   unchanged.
 - `drivers/test_pins.c` also reads `PICO_DEFAULT_LED_PIN`, but it is not built
-  on `pc` because there is no VGA detection.
+  on `picocalc` because there is no VGA detection.
 - The CYW43 stays powered off because nothing drives `WL_ON`. This is
   **derived**: RP2350 bank-0 pads come out of reset with the pull-down on and
   input isolation set, so GPIO 23 sits low. **Needs hardware**: current draw
@@ -188,7 +188,7 @@ recomputes the divider and gets 25.2 MHz, provided the move happens before
 
 `pwm_audio_init()` detects `stereo_same_slice` and drives both channels from
 one slice's packed CC register. GPIO 26 and 27 are slice 5 A and B, so that
-path is taken. DMA channels 8 and 9 are hardcoded and nothing else on `pc`
+path is taken. DMA channels 8 and 9 are hardcoded and nothing else on `picocalc`
 uses them. The amplifier enable `PA_EN` belongs to the STM32, which holds it
 high at boot (`picocalc_keyboard.ino`, `setup()`), so the Pico has nothing to
 switch.
@@ -216,10 +216,10 @@ The PicoCalc layer reuses that logic. Section 5.2 says how.
 
 | Thing | Consequence |
 |---|---|
-| HDMI, VGA, composite | No PIO video. Every `HDMI_DRIVER` value except the new `LCD_SPI` is rejected for `pc` at configure time |
+| HDMI, VGA, composite | No PIO video. Every `HDMI_DRIVER` value except the new `LCD_SPI` is rejected for `picocalc` at configure time |
 | HDMI-embedded audio, I2S | The F12 audio menu offers PWM only. A `micro.ini` written on another board with `audio_driver` HDMI or I2S is coerced to PWM, as `frank_settings.c` already does for HDMI in the `HDMI_PIO` builds |
-| PS/2, NES pad | `board_pc.h` omits `HAS_PS2` and `HAS_NESPAD`, as `board_fj.h` does |
-| USB HID host | `USB_HID=1` is rejected for `pc`. The native USB port is the Pico module's own connector, not a host socket |
+| PS/2, NES pad | `board_picocalc.h` omits `HAS_PS2` and `HAS_NESPAD`, as `board_fj.h` does |
+| USB HID host | `USB_HID=1` is rejected for `picocalc`. The native USB port is the Pico module's own connector, not a host socket |
 | PSRAM | Present (8 MB on PIO) but not used, per the brief's N6. Compiled out, not probed. See section 9 |
 
 ---
@@ -368,7 +368,7 @@ TX FIFO is full. At 115,200 baud that is 87 µs a character, so a 100-character
 status line costs core 0 about 6 ms. The USB-CDC builds avoid this with
 `PICO_STDIO_USB_STDOUT_TIMEOUT_US=0`. There is no UART equivalent.
 
-So `pc` gets its own stdio driver:
+So `picocalc` gets its own stdio driver:
 
 - A 2 KB TX ring filled by `out_chars` and drained by the UART TX interrupt.
   When the ring is full, characters are dropped and counted, and the count is
@@ -377,7 +377,7 @@ So `pc` gets its own stdio driver:
   `getchar_timeout_us(0)` for `frank_console.c`.
 
 It is registered with `stdio_set_driver_enabled()`, and
-`pico_enable_stdio_uart` stays off for `pc`. `drivers/uart_logging.c` is the
+`pico_enable_stdio_uart` stays off for `picocalc`. `drivers/uart_logging.c` is the
 nearest existing code, but it writes with blocking `uart_putc_raw`. The Fruit
 Jam's UART1 console has the same latent cost. That is recorded as a finding
 and not changed here.
@@ -500,16 +500,16 @@ This document, the `CLAUDE.md` section, the `docs/HANDOFF.md` entries.
 
 ### Phase 1: boots blind
 
-- `src/board_pc.h`: the pins in section 2.1, `HAS_PWM` only, no PSRAM pin.
-  `board_config.h` gets a `PLATFORM_PC` branch.
-- CMake: `pc` in the platform list, with `PICO_BOARD=pico2` and
-  `rp2350-arm-s`. A new `HDMI_DRIVER=LCD_SPI`, forced for `pc` and rejected
-  elsewhere, mirroring the `HSTX` gating. `USB_HID=1` rejected for `pc`. The
-  SD pins passed as compile definitions. `build.sh` documents `pc`.
+- `src/board_picocalc.h`: the pins in section 2.1, `HAS_PWM` only, no PSRAM pin.
+  `board_config.h` gets a `PLATFORM_PICOCALC` branch.
+- CMake: `picocalc` in the platform list, with `PICO_BOARD=pico2` and
+  `rp2350-arm-s`. A new `HDMI_DRIVER=LCD_SPI`, forced for `picocalc` and rejected
+  elsewhere, mirroring the `HSTX` gating. `USB_HID=1` rejected for `picocalc`. The
+  SD pins passed as compile definitions. `build.sh` documents `picocalc`.
 - `drivers/lcd_st7365p.c` as a stub with the `graphics_*` interface and no
   panel I/O.
 - `drivers/uart_stdio_nb.c` (section 5.3).
-- `main()`: no LED, no PSRAM probe on `pc`. The PSRAM pin default is not
+- `main()`: no LED, no PSRAM probe on `picocalc`. The PSRAM pin default is not
   enough, because it is GPIO 0.
 - A once-a-second line from `frank_perf_tick()`: frame count, emulation
   speed as a percentage of 50 Hz, and a checksum of BBC RAM &3000–&7FFF.
@@ -541,7 +541,7 @@ works. Alt+D and Alt+S open the loader and settings.
 
 ### Phase 4: sound
 
-`frank_audio.c` and `frank_settings.c` gated to PWM only on `pc`.
+`frank_audio.c` and `frank_settings.c` gated to PWM only on `picocalc`.
 `pwm_audio_push_samples_blocking()` replaced on this path with a non-blocking
 push that drops when the ring is full and counts it (N3). The drop count goes
 on the status line.
@@ -569,7 +569,7 @@ build, and the README section.
 
 ## 9. Resource budget
 
-**RAM.** `pc` drops every video driver's buffers and keeps the two 160 KB
+**RAM.** `picocalc` drops every video driver's buffers and keeps the two 160 KB
 framebuffers. The closest existing build is `HDMI_PIO` on m2, at 297,268 bytes
 (56.7%), and it carries the PIO HDMI line buffers and tables. The LCD driver
 adds about 3.3 KB: a 512-byte RGB565 table, two 640-byte line buffers, 1 KB of
@@ -584,7 +584,7 @@ real-time.
 **PIO.** None used. All three blocks are free.
 
 **DMA.** PWM hardcodes 8 and 9. The LCD claims dynamically, after audio init
-(section 5.1). The I2S code is compiled but never initialised on `pc`, so 10
+(section 5.1). The I2S code is compiled but never initialised on `picocalc`, so 10
 and 11 are idle.
 
 **IRQs.** `DMA_IRQ_2` PWM, `UART0_IRQ` console, and one `DMA_IRQ_n` for the
@@ -625,23 +625,23 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 
 ## 11. Testing
 
-The compile sweep in `CLAUDE.md` section 9 gains `pc`:
+The compile sweep in `CLAUDE.md` section 9 gains `picocalc`:
 
 ```bash
-for p in m2 m1 z0 fj pc; do for d in HDMI_PIO_AUDIO HDMI_PIO COMPOSITE LCD_SPI; do
-  [ "$p" = pc ] && [ "$d" != LCD_SPI ] && continue
-  [ "$p" != pc ] && [ "$d" = LCD_SPI ] && continue
+for p in m2 m1 z0 fj picocalc; do for d in HDMI_PIO_AUDIO HDMI_PIO COMPOSITE LCD_SPI; do
+  [ "$p" = picocalc ] && [ "$d" != LCD_SPI ] && continue
+  [ "$p" != picocalc ] && [ "$d" = LCD_SPI ] && continue
   [ "$p" = z0 ] && [ "$d" = COMPOSITE ] && continue
   [ "$p" = fj ] && [ "$d" = COMPOSITE ] && continue
   for u in 0 1; do
-    [ "$p" = pc ] && [ "$u" = 1 ] && continue
+    [ "$p" = picocalc ] && [ "$u" = 1 ] && continue
     PLATFORM=$p HDMI_DRIVER=$d USB_HID=$u ./build.sh \
       || echo "FAILED: $p $d hid=$u"
   done
 done; done
 ```
 
-A `pc` ELF must contain the console driver:
+A `picocalc` ELF must contain the console driver:
 `arm-none-eabi-nm build/frank-micro.elf | grep uart_stdio_nb` must not be
 empty. New drivers are checked with
 `grep -n 'sleep_\|busy_wait\|_blocking' drivers/lcd_st7365p.c

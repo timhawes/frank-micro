@@ -8,12 +8,12 @@
 #
 #
 # Usage: PLATFORM=m1 USB_HID=1 ./build.sh [CPU_MHZ] [HDMI_DRIVER]
-#   PLATFORM:    m1, m2 (default), z0, fj, pc
+#   PLATFORM:    m1, m2 (default), z0, fj, picocalc
 #   HDMI_DRIVER: HDMI_PIO_AUDIO (default, HDMI-embedded audio)
 #                HDMI_PIO       (PIO HDMI/VGA + I2S/PWM audio)
 #                COMPOSITE      (software PAL/NTSC TV + I2S/PWM audio; forces 378 MHz)
 #                HSTX           (RP2350 HSTX DVI 720x576p50 + HDMI-embedded audio; fj only)
-#                LCD_SPI        (PicoCalc 320x320 SPI LCD + PWM audio; pc only, and its default)
+#                LCD_SPI        (PicoCalc 320x320 SPI LCD + PWM audio; picocalc only, and its default)
 #   USB_HID:     0 (default) PS/2 only + USB serial console
 #                1 USB HID keyboard/gamepad + PS/2 (no USB serial console)
 #
@@ -26,7 +26,7 @@ cd build
 : "${PLATFORM:=m2}"
 : "${CPU_SPEED:=${1:-252}}"
 # The PicoCalc has only its SPI LCD, so it gets a different default driver.
-if [ "$PLATFORM" = "pc" ]; then
+if [ "$PLATFORM" = "picocalc" ]; then
     : "${HDMI_DRIVER:=${2:-LCD_SPI}}"
 else
     : "${HDMI_DRIVER:=${2:-HDMI_PIO_AUDIO}}"

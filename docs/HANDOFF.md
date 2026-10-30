@@ -16,7 +16,7 @@ what was believed when, and why it changed.
 | `docs/INVESTIGATION.md` | Evidence. Twenty numbered findings about the repository as it stands, every claim cited to a file and line. |
 | `docs/FRUIT-JAM.md` | Plan. What has to change to run on the Adafruit Fruit Jam, phased, with a provenance section recording how strong each claim is. |
 | `docs/HANDOFF.md` | This file. Decisions, dead ends, and the register of what still needs hardware. |
-| `docs/PICOCALC.md` | Plan for the ClockworkPi PicoCalc (`pc`), added 2026-10-30, in the shape of `FRUIT-JAM.md`. |
+| `docs/PICOCALC.md` | Plan for the ClockworkPi PicoCalc (`picocalc`; `pc` before 2026-10-30), added 2026-10-30, in the shape of `FRUIT-JAM.md`. |
 
 None of the four is committed yet. `git status` shows `CLAUDE.md` and `docs/` as
 untracked at the time of writing.
@@ -503,6 +503,15 @@ branch `picocalc-phase1`.
   `USB_HID=1` is rejected for `pc`.
 - **A disc for the blind boot needs no INI.** `frank_disk_autoload()` falls
   back to `/micro/disk/drivea.ssd`, so naming the test disc that is enough.
+
+### 2026-10-30: the PicoCalc platform ID is `picocalc`, not `pc`
+
+The user found `pc` confusing. Renamed throughout before phase 1 was pushed:
+`PLATFORM=picocalc`, `PLATFORM_PICOCALC`, `BOARD_PICOCALC`,
+`src/board_picocalc.h`. `CLAUDE.md`, `docs/PICOCALC.md`, `build.sh` and
+`CMakeLists.txt` were updated. The entries above, written before the rename,
+say `pc` and are left as written. Read `pc` in them as `picocalc`. The branch
+names were already `picocalc-phaseN` and are unchanged.
 
 ## Findings that changed the plan
 
@@ -1050,7 +1059,12 @@ and `SCRATCH_Y` are 2 KB each. The ELF has `uart_stdio_nb_init` and
 
 Frozen boards: all 22 existing variants (m2, m1 and z0 in each driver, fj in
 `HDMI_PIO_AUDIO`, `HDMI_PIO` and `HSTX`, each with `USB_HID` 0 and 1) were
-built out-of-tree before and after the change, from the same directory. RESULT_PLACEHOLDER
+built out-of-tree before and after the change, from the same directory.
+**All 22 `.bin` files are byte-identical** (SHA-256), so the change cannot
+alter the behaviour of any existing board, which is a stronger result than the
+preprocessor argument. The configure-time checks were also tested: `pc` with
+`HDMI_PIO_AUDIO`, `m2` with `LCD_SPI`, and `pc` with `USB_HID=1` each stop with
+their own message.
 
 Not yet run on hardware.
 

@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 /*
- * board_pc.h — ClockworkPi PicoCalc (mainboard v2.0) with a Raspberry Pi
+ * board_picocalc.h — ClockworkPi PicoCalc (mainboard v2.0) with a Raspberry Pi
  * Pico 2 or Pico 2 W (RP2350A) in its socket.
  *
  * Display: a 320x320 ST7365P SPI LCD on SPI1.  No HDMI, no VGA, no composite.
@@ -27,10 +27,10 @@
  *   GPIO 2-5, 20, 21     the board's 8 MB PSRAM, which is not used.
  *   GPIO 8, 9            UART1, wired to the keyboard STM32's UART3.
  *
- * Selected when -DPLATFORM=pc.
+ * Selected when -DPLATFORM=picocalc.
  */
-#ifndef BOARD_PC_H
-#define BOARD_PC_H
+#ifndef BOARD_PICOCALC_H
+#define BOARD_PICOCALC_H
 
 /* ---- Capabilities ----
  * Only PWM audio.  Deliberately no HAS_PS2, HAS_NESPAD, HAS_I2S, HAS_TV or
@@ -89,6 +89,6 @@
 /* ---- PSRAM: present but not used ----
  * No PSRAM_CS_PIN_RP2350A here, and that is not enough on its own:
  * board_config.h defaults the pin to 0, which on this board is UART0 TX.  The
- * probe is compiled out in main() under PLATFORM_PC instead. */
+ * probe is compiled out in main() under PLATFORM_PICOCALC instead. */
 
-#endif /* BOARD_PC_H */
+#endif /* BOARD_PICOCALC_H */

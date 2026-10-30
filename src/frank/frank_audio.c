@@ -143,9 +143,9 @@ static void pwm_quiet(void) {
 
 void frank_audio_set_driver(int drv) {
     if (drv < 0 || drv >= FRANK_AUDIO_DRV_COUNT) drv = FRANK_AUDIO_DEFAULT;
-#if defined(PLATFORM_PC)
+#if defined(PLATFORM_PICOCALC)
     /* PicoCalc: PWM is the only output.  In particular I2S must never start:
-     * its PIO state machine would drive whatever pins board_pc.h names. */
+     * its PIO state machine would drive whatever pins board_picocalc.h names. */
     drv = FRANK_AUDIO_PWM;
 #elif !defined(HDMI_PIO_AUDIO) && !defined(HDMI_HSTX)
     /* No HDMI-audio backend in the HDMI_PIO build — route it to the I2S DAC. */
