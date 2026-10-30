@@ -538,8 +538,16 @@ Also carried in from Phase 1: MODE 7 at 100%.
 
 **Built and run 2026-10-30, on branch `picocalc-phase2`.** The panel is driven
 and the console shows 14–15 frames a second sent to it. Every emulated frame
-now runs at 100%, MODE 7 included, at 69–74% busy. **The picture itself has not
-yet been looked at**, so the colour and orientation checks are still open.
+now runs at 100%, MODE 7 included, at 69–74% busy.
+
+**Looked at on the panel, 2026-10-30:** the picture is centred with black
+bands above and below, the right way up, not mirrored and not inverted. A
+temporary build drew pure red, green and blue bars (RGB565 `F800`, `07E0`,
+`001F`) in the top band, and they showed as red, green and blue, so the
+colour order is right as built. The demo disc covers MODE 7 and bitmap
+modes. The MOS banner and BASIC prompt are the one exit item not yet seen
+on the panel. Getting there needs the blank-disc swap in `docs/HANDOFF.md`,
+or Phase 3's keyboard.
 
 ### Phase 3: keyboard
 
@@ -629,7 +637,7 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 | Is the `TE` pin really unconnected, rather than lost in text extraction? | Tear-free display | A visual check of the schematic's LCD connector |
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional; power draw | Current draw, W against non-W |
 | Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | Phase 3, against B-em's own BREAK handling |
-| Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | Copied from the sample in Phase 2; awaiting a look at the panel. `LCD_SWAP_RB` in `drivers/lcd_st7365p.c` flips red and blue |
+| Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | **Answered 2026-10-30: yes, and yes.** With `INVON`, `MADCTL` 0x48 and `LCD_SWAP_RB` 0, the picture is upright, unmirrored and not inverted, and pure red, green and blue bars show true |
 | Is a Phase 6 battery reading percent alone, or has it a charging flag? | Status line wording | Read `battery.ino` in Phase 6 |
 
 ---
