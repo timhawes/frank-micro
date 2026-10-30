@@ -16,6 +16,7 @@ what was believed when, and why it changed.
 | `docs/INVESTIGATION.md` | Evidence. Twenty numbered findings about the repository as it stands, every claim cited to a file and line. |
 | `docs/FRUIT-JAM.md` | Plan. What has to change to run on the Adafruit Fruit Jam, phased, with a provenance section recording how strong each claim is. |
 | `docs/HANDOFF.md` | This file. Decisions, dead ends, and the register of what still needs hardware. |
+| `docs/PICOCALC.md` | Plan for the ClockworkPi PicoCalc (`pc`), added 2026-10-30, in the shape of `FRUIT-JAM.md`. |
 
 None of the four is committed yet. `git status` shows `CLAUDE.md` and `docs/` as
 untracked at the time of writing.
@@ -428,6 +429,48 @@ source, and the attenuation then happens *before* a heavily attenuated amplifier
 Doing it in the analogue domain after the DAC costs no resolution at all. The
 software divide is kept for boards with no codec, where I2S feeds a bare DAC with
 no volume control of its own.
+
+### 2026-10-30: the PicoCalc is a fifth board, `pc`, and is based on `fruit-jam-port`
+
+`REQUIREMENTS.md` (2026-10-07) asks for a ClockworkPi PicoCalc port. It is to be
+based on rh1tech `main` if the Fruit Jam work had been merged there, otherwise
+on this branch. rh1tech `main` was still `c27ffbf` on 2026-10-30 (read with
+`git ls-remote`), so the work branches from `fruit-jam-port` at `d8d25f5`, one
+branch per phase: `picocalc-phase0`, `picocalc-phase1`, and so on. The plan is
+`docs/PICOCALC.md`. `docs/PICOCALC.md` joins the document table at the top of
+this file in the role `docs/FRUIT-JAM.md` has for the Fruit Jam.
+
+### 2026-10-30: PicoCalc commits carry an AI co-author trailer, by the user's choice
+
+`CLAUDE.md` section 10 treats "no AI attribution trailers" as the house rule.
+For the PicoCalc branches the user chose the opposite: commits carry a
+`Co-Authored-By` trailer, and will be squashed before anything goes upstream.
+This overrides section 10 for these branches only. It is not a change to the
+rule.
+
+### 2026-10-30: one UF2 for the Pico 2 and the Pico 2 W
+
+The user's test unit is a Pico 2 W, and both modules must work. Decided: build
+with `PICO_BOARD=pico2`, and never touch GPIO 23, 24, 25 or 29, whose roles
+differ between the two (Pico 2 W datasheet). That means gating the
+`PICO_DEFAULT_LED_PIN` block in `main()` out on `pc`, since GPIO 25 is the
+CYW43 chip select on a W. No runtime W detection, and no wireless. Every
+hardware result records which module it came from. Detail is in
+`docs/PICOCALC.md` section 2.2.
+
+### 2026-10-30: PicoCalc key map, agreed in part
+
+Agreed with the user before `docs/PICOCALC.md` was written:
+
+- Symbols type what the PicoCalc legend says. Letters, digits, space, arrows
+  and modifiers stay positional.
+- F1=f1 … F9=f9, F10=f0.
+- Alt+D is the disc loader, Alt+S the settings, Alt+P a screenshot.
+  Ctrl+Alt+Del is unchanged.
+
+Proposed but **not yet agreed**: BREAK on Shift+Esc, COPY on Shift+Del, SHIFT
+LOCK on Alt+Caps, and the rest of `docs/PICOCALC.md` section 7.2. Phase 0 exits
+when the user signs those off. Record the outcome as a new entry.
 
 ## Findings that changed the plan
 
@@ -911,6 +954,51 @@ because there is no MMU and address 0 is readable on this part. Harmless in
 practice, identical on all four boards, and out of scope while the rule about
 keeping `src/bem/` divergence small stands.
 
+### 2026-10-30: the PicoCalc keyboard's config register cannot be written
+
+Read from `clockworkpi/PicoCalc` at `fdcfe2c`, keyboard firmware
+`BIOSVERSION 0x16`. In `receiveEvent()` in `picocalc_keyboard.ino` there is no
+case for `REG_ID_CFG` (0x02), so a write falls into `default` and is discarded.
+`reg_init()` sets `CFG_USE_MODS | CFG_REPORT_MODS`. So the brief's plan to clear
+`CFG_USE_MODS` at boot, to get raw key positions, cannot work on that firmware.
+Shift always changes the reported code, F6–F10, BREAK, HOME, END, PgUp, PgDn and
+Insert exist only as Shift layers, and the release of a key can carry a
+different code from its press. The key layer is designed around this. See
+`docs/PICOCALC.md` section 5.2. Whether the user's unit runs 0x16 needs
+hardware.
+
+### 2026-10-30: on `pc` the PSRAM probe defaults to the console pin
+
+Read: with no `PSRAM_CS_PIN_RP2350A` in the board header, `board_config.h`
+defaults it to 0. `main()` calls `psram_init(get_psram_pin())`
+unconditionally, and on an RP2350A that pin is GPIO 0, the PicoCalc's UART0 TX
+(schematic net `UART0_TX`). The probe has to be compiled out for `pc`.
+
+### 2026-10-30: PicoCalc schematic results
+
+Read from the mainboard v2.0 schematic (text extraction). Every pin in the
+brief is confirmed. Further facts:
+
+- GPIO 8 and 9 are `UART1`, wired to the STM32's `UART3`. They are not in the
+  brief.
+- PSRAM uses GPIO 2 to 5, 20 and 21, as a quad interface.
+- GPIO 28 goes to an expansion header.
+- The LCD connector's `TE` pin has no net, so there is no tearing signal.
+  That is weaker than a positive read; confirm visually.
+- The USB-C port goes through WAS7227 switches to either the STM32's USB or a
+  CH340C, whose serial side is switched between Pico UART0 and STM32 UART1.
+  Derived: `SW701` selects, and the PicoCalc's own USB-C can be the frank-micro
+  console.
+- The STM32 owns `PA_EN`, `HP_DET`, the backlights and `PICO_EN`.
+
+### 2026-10-30: `stdio_uart` blocks core 0 when its FIFO fills
+
+Read from the SDK's behaviour: `uart_putc()` spins on a full 32-byte TX FIFO,
+87 µs a character at 115,200 baud. Unlike USB-CDC, there is no timeout macro.
+The PicoCalc gets a ring-buffered, interrupt-driven stdio driver that drops when
+full (`docs/PICOCALC.md` section 5.3). The Fruit Jam's UART1 console has the
+same latent cost. It is not changed, and is recorded here only.
+
 ## Dead ends, so nobody retries them
 
 ### `drivers/HDMI_vga_hstx.c` is not a starting point for an HSTX driver
@@ -1007,6 +1095,20 @@ Resolved since the first version of this table: whether the USB-C port can be a
 host (no), and whether the HSTX pins are directly driven (yes). Both from the
 schematic, both recorded above.
 
+### PicoCalc, added 2026-10-30
+
+Nothing has been run on a PicoCalc. The test unit has a **Pico 2 W**.
+
+| Question | Blocks | Cheapest way to settle it |
+|---|---|---|
+| What SPI clock does the ST7365P take before the picture corrupts? | N2, the display frame rate | Phase 5: step 24 → 25.2 → 31.5 → 42 → 63 MHz |
+| Does the keyboard STM32 need a gap between the FIFO write and the read? | Keyboard throughput | Phase 3: queue back-to-back first |
+| Does the unit's keyboard firmware report version 0x16? | Whether the config-write finding applies | Phase 3 boot log |
+| Which `SW701` position puts Pico UART0 on the USB-C port? | Nothing; the Pico's own USB is a fallback | Phase 1 |
+| Is the LCD `TE` pin really unconnected? | Tear-free display | Visual check of the schematic |
+| Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional | Current draw, W against non-W |
+| Does any of it run on a non-W Pico 2? | The both-modules requirement | Someone with a non-W runs the checklist |
+
 ## External sources consulted, with commits
 
 Re-clone at these commits rather than at a branch tip. None is vendored into this
@@ -1026,3 +1128,10 @@ repository and none should be until a phase needs it.
 
 `PICO_SDK_PATH` was not set in the environment while these documents were
 written. SDK paths are relative to `/home/adq/dev/pico-sdk`, found by searching.
+
+PicoCalc, added 2026-10-30:
+
+| Repository or document | Commit | What it was read for |
+|---|---|---|
+| `clockworkpi/PicoCalc` | `fdcfe2c` | Keyboard firmware (`Code/picocalc_keyboard/`), the LCD sample (`Code/picocalc_helloworld/lcdspi/`), the mainboard v2.0 schematic, the ST7365P datasheet. Fetched, not cloned |
+| Pico 2 W datasheet | fetched 2026-10-30 | Roles of GPIO 23, 24, 25 and 29 |

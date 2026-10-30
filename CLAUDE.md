@@ -23,6 +23,9 @@ Four boards are supported: `m1` Murmulator 1.x, `m2` Murmulator 2.0, `z0`
 Waveshare RP2350-PiZero, and `fj` Adafruit Fruit Jam. The Fruit Jam differs from
 the other three in enough ways to get its own section; see section 12.
 
+A fifth, `pc` ClockworkPi PicoCalc with a Pico 2 or Pico 2 W, is **planned and
+not yet built**. See section 13 and `docs/PICOCALC.md`.
+
 The emulation engine is **B-em** by Tom Walker, vendored in `src/bem/`. The parts
 that make it fit on a microcontroller come from Graham Sanderson's Pico fork of
 B-em: the Thumb-assembly 6502 core, the raw-row rasteriser, the sector-streaming
@@ -735,6 +738,11 @@ default `m2` build; flash is on a 16 MB part here rather than 4 MB.
 Sweep `USB_HID` too: it changes which input drivers and which stdio backend are
 compiled in, so it is a second dimension and not a detail.
 
+Once the PicoCalc's Phase 1 lands, the sweep gains `pc` with its own
+`HDMI_DRIVER=LCD_SPI` and `USB_HID=0` only. The extended loop is in
+`docs/PICOCALC.md` section 11. Until then, `pc` does not configure, and leaving
+it out of the loop is correct.
+
 ```bash
 for p in m2 m1 z0 fj; do for d in HDMI_PIO_AUDIO HDMI_PIO COMPOSITE; do
   [ "$p" = z0 ] && [ "$d" = COMPOSITE ] && continue
@@ -980,3 +988,53 @@ Bricking is not a risk: `BTN0` is wired as a standard BOOTSEL, so holding it
 while plugging in USB always recovers the board. To flash, do that, then copy
 `build/frank-micro.uf2` to the `RPI-RP2` drive. `picotool` and `openocd` are not
 installed on this machine, so `./flash.sh` will not run as it stands.
+
+
+## 13. The PicoCalc, planned
+
+`PLATFORM=pc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
+2 W** (RP2350A, 4 MB flash). **Nothing is built yet.** Phase 0, the plan, was
+written on 2026-10-30. The brief is `REQUIREMENTS.md`, the plan is
+`docs/PICOCALC.md`, and decisions are logged in `docs/HANDOFF.md`. Update this
+section as phases land.
+
+What makes it different from every other board:
+
+- **The display is an SPI LCD, not a monitor.** A 320×320 ST7365P on `spi1`,
+  GPIO 10 to 15. The 320×256 frame is centred, with 32 rows above and below.
+  The panel keeps its own frame memory, so scanout is a bandwidth problem
+  rather than a real-time one. Core 1 pushes only the rows that changed, and
+  the emulator never waits for it. The panel's `TE` pin is not wired, so
+  there is no tear-free sync. The driver is `drivers/lcd_st7365p.c`, built as
+  `HDMI_DRIVER=LCD_SPI`. That value is forced on `pc` and rejected elsewhere.
+- **The keyboard reports characters, not positions.** An STM32 at I²C `0x1F`
+  on `i2c1`, GPIO 6 and 7. Its shipped firmware (0x16) **ignores writes to the
+  config register**, so Shift always changes the reported code, and the
+  release of a key can carry a different code from its press. The layer in
+  `frank_keyboard.c` therefore tracks physical keys. Never sleep or block on
+  the bus: the sample driver's 16 ms sleep cannot run on core 0. See
+  `docs/PICOCALC.md` section 5.2.
+- **No F11 or F12.** Alt+D opens the disc loader, Alt+S the settings, Alt+P
+  takes a screenshot. The key map is `docs/PICOCALC.md` section 7.
+- **Audio is PWM only,** on GPIO 26 and 27, which are one slice. No HDMI audio,
+  no I2S.
+- **The console is UART0, GPIO 0 and 1,** and it reaches the PicoCalc's own
+  USB-C port through a CH340C. It needs its own non-blocking stdio driver,
+  because the SDK's `stdio_uart` spins when its FIFO fills.
+
+Hazards:
+
+- **Do not let the PSRAM probe run.** With no PSRAM pin declared,
+  `board_config.h` defaults it to GPIO 0, the console's TX pin. Compile the
+  probe out on `pc`. The board's 8 MB PSRAM (GPIO 2 to 5, 20, 21) is not
+  used.
+- **Never touch GPIO 23, 24, 25 or 29.** On a Pico 2 W they belong to the
+  CYW43 wireless chip, and GPIO 25 is its chip select, not an LED. The
+  `PICO_DEFAULT_LED_PIN` block in `main()` must be gated out on `pc`. One UF2,
+  built with `PICO_BOARD=pico2`, has to run on both modules.
+- **GPIO 8 and 9 are a UART link to the STM32.** m1 and m2 use GPIO 8 as their
+  PSRAM chip select, so do not copy their headers.
+- **The keyboard MCU is also the power manager.** It gates the Pico's power.
+  Never write its reset (`0x08`) or power-off (`0x0E`) registers.
+- **`clk_peri` caps SPI at 24 MHz** until it is moved to `clk_sys`, which must
+  happen before any UART, SPI or I²C init. It is the same trap as in section 6.
