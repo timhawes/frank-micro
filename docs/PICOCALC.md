@@ -545,9 +545,10 @@ bands above and below, the right way up, not mirrored and not inverted. A
 temporary build drew pure red, green and blue bars (RGB565 `F800`, `07E0`,
 `001F`) in the top band, and they showed as red, green and blue, so the
 colour order is right as built. The demo disc covers MODE 7 and bitmap
-modes. The MOS banner and BASIC prompt are the one exit item not yet seen
-on the panel. Getting there needs the blank-disc swap in `docs/HANDOFF.md`,
-or Phase 3's keyboard.
+modes. The MOS banner and BASIC prompt were then checked by booting from a blank
+disc (the swap in `docs/HANDOFF.md`), and were readable in MODE 7.
+
+**All Phase 2 exit criteria met on hardware, 2026-10-30.**
 
 ### Phase 3: keyboard
 
