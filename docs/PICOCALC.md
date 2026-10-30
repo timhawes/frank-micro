@@ -422,7 +422,7 @@ it is not used.
   hard reset (unchanged). The BBC has no Alt key, so Alt never reaches the
   emulated machine.
 
-### 7.2 Proposed, for sign-off
+### 7.2 Special keys, agreed 2026-10-30
 
 | BBC key | PicoCalc | Note |
 |---|---|---|
@@ -496,7 +496,7 @@ same time.
 ### Phase 0: plan, no code
 
 This document, the `CLAUDE.md` section, the `docs/HANDOFF.md` entries.
-**Exit:** you have agreed section 7 and this plan.
+**Exit:** you have agreed section 7 and this plan. **Passed 2026-10-30.**
 
 ### Phase 1: boots blind
 

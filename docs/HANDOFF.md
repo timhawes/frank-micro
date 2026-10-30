@@ -472,6 +472,15 @@ Proposed but **not yet agreed**: BREAK on Shift+Esc, COPY on Shift+Del, SHIFT
 LOCK on Alt+Caps, and the rest of `docs/PICOCALC.md` section 7.2. Phase 0 exits
 when the user signs those off. Record the outcome as a new entry.
 
+### 2026-10-30: PicoCalc phase 0 signed off
+
+The user approved the whole of `docs/PICOCALC.md` section 7 and the phased
+plan. That includes the parts the earlier key-map entry listed as not yet
+agreed: BREAK on Shift+Esc, SHIFT-BREAK on Alt+Shift+Esc, CTRL-BREAK on
+Ctrl+Shift+Esc, COPY on Shift+Del, SHIFT LOCK on Alt+Caps, and the symbol
+table in section 7.3. Phase 0 has passed its exit check. Phase 1 starts on
+branch `picocalc-phase1`.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
