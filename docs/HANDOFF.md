@@ -1068,6 +1068,59 @@ their own message.
 
 Not yet run on hardware.
 
+### 2026-10-30: PicoCalc phase 1 on hardware, and two speeds that are not 100%
+
+Run on the test unit, a Pico 2 W in a PicoCalc, flashed and inspected over SWD
+with a Raspberry Pi Debug Probe. The firmware was unchanged from the build entry
+above.
+
+What passed:
+
+- The console arrives on the PicoCalc's USB-C port through the CH340C, at
+  115200, with `drop=0` throughout. `SW701` was left as the unit came, and that
+  position works.
+- The SD card mounts. The card is the PicoCalc's own, 8 GB SDHC, FAT.
+- With no `micro.ini`, the board boots the Master 128 and the startup beep
+  comes out of the speakers, so PWM audio on GPIO 26 and 27 works.
+- `/micro/disk/drivea.ssd`, here `bs-twisted.ssd` from `src/bem/pico/discs/`,
+  autoboots and `scr` changes every second while the demo runs.
+
+What did not:
+
+- **MODE 7 runs at 92 to 94%.** The Master's start-up screen and the demo's
+  opening both give 46 to 47 fps with no idle time. A heavier section of the demo
+  gave 83 to 89%. Its later sections run at 100% with 9 to 41% idle.
+- Sampled over SWD, core 0 is busy in `draw_bytes_teletext` (B-em's rasteriser,
+  in RAM) and `blit_row_teletext`, `lum5` and `rgb555_to_bbc` (`frank_gui.c`, in
+  flash). `clk_sys` was read back as 252 MHz and the flash as 84 MHz, divider 3,
+  so the board is not running slow.
+- It is not the blocking PWM push. Swapping in the non-blocking push on
+  `picocalc` changed nothing, and was reverted.
+- That code is shared, so the other boards very likely run MODE 7 at the same
+  speed. Nobody has measured them.
+- Phase 2 replaces the row conversion for the LCD, which is where to win this
+  back. **Phase 1's "100% speed" exit holds in bitmap modes only.**
+
+Do not repeat these traps:
+
+- **The PicoCalc must be switched on whenever the Pico runs.** With the
+  PicoCalc off and the Pico powered from its own USB, the card is fed through
+  the SPI pull-ups. It still initialises and answers commands, and reports its
+  size, but every sector reads as zeros with a valid CRC. The mount fails with
+  `FR_NO_FILESYSTEM`.
+- The card stays in that state after the PicoCalc is switched on, until all
+  power is removed. A Pico reset or CMD0 does not clear it. An afternoon went
+  into debugging the SD driver before this was found. The driver is fine.
+- **Sampling the PC over openocd's telnet port at a fixed cadence aliases with
+  the 50 Hz frame.** It reported 92% of the time in the pacer's
+  `busy_wait_until` while the core was in fact saturated. Backtraces taken
+  through gdb at irregular intervals gave the true picture.
+
+Files can be put on the card with no card reader: stop at the line after
+`f_mount()` in `main()`, `restore` the file into `screen_mem` from gdb, and call
+`f_mkdir`, `f_open`, `f_write` and `f_close` on the target. That is how
+`drivea.ssd` got there, and a read-back compared equal.
+
 ## Dead ends, so nobody retries them
 
 ### `drivers/HDMI_vga_hstx.c` is not a starting point for an HSTX driver
@@ -1166,14 +1219,14 @@ schematic, both recorded above.
 
 ### PicoCalc, added 2026-10-30
 
-Nothing has been run on a PicoCalc. The test unit has a **Pico 2 W**.
+Phase 1 has been run on the test unit, which has a **Pico 2 W**; see the
+hardware entry above.
 
 | Question | Blocks | Cheapest way to settle it |
 |---|---|---|
 | What SPI clock does the ST7365P take before the picture corrupts? | N2, the display frame rate | Phase 5: step 24 → 25.2 → 31.5 → 42 → 63 MHz |
 | Does the keyboard STM32 need a gap between the FIFO write and the read? | Keyboard throughput | Phase 3: queue back-to-back first |
 | Does the unit's keyboard firmware report version 0x16? | Whether the config-write finding applies | Phase 3 boot log |
-| Which `SW701` position puts Pico UART0 on the USB-C port? | Nothing; the Pico's own USB is a fallback | Phase 1 |
 | Is the LCD `TE` pin really unconnected? | Tear-free display | Visual check of the schematic |
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional | Current draw, W against non-W |
 | Does any of it run on a non-W Pico 2? | The both-modules requirement | Someone with a non-W runs the checklist |

@@ -514,7 +514,11 @@ This document, the `CLAUDE.md` section, the `docs/HANDOFF.md` entries.
 - A once-a-second line from `frank_perf_tick()`: frame count, emulation
   speed as a percentage of 50 Hz, and a checksum of BBC RAM &3000–&7FFF.
 
-**Built 2026-10-30, on branch `picocalc-phase1`; not yet run on hardware.**
+**Built and run on a Pico 2 W, 2026-10-30, on branch `picocalc-phase1`.** The
+console, the SD mount, PWM audio and the disc autoboot all work. Speed is 100%
+in bitmap modes and 92 to 94% in MODE 7, CPU-bound in the teletext rasteriser
+and the row conversion; Phase 2's LCD blit is where to win that back. See
+`docs/HANDOFF.md`.
 
 **Exit:** the console shows 100% speed and the SD card mounts. The checksum
 changes when a disc autoboots. For this phase the disc is
@@ -614,7 +618,6 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 | What SPI clock does the panel take before the picture corrupts? | N2 | Phase 5, stepping up from 24 MHz |
 | Does the STM32 need a gap between the FIFO write and the read? | Keyboard throughput | Phase 3, back-to-back first |
 | Does the unit's keyboard firmware report version 0x16? | Whether section 5.2 applies | Phase 3 boot log. Other firmware may honour the config write, which would make section 7 simpler |
-| Which `SW701` position puts Pico UART0 on the USB-C port? | Nothing; the Pico's own USB is a fallback | You try it in Phase 1 |
 | Is the `TE` pin really unconnected, rather than lost in text extraction? | Tear-free display | A visual check of the schematic's LCD connector |
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional; power draw | Current draw, W against non-W |
 | Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | Phase 3, against B-em's own BREAK handling |

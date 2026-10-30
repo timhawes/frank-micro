@@ -994,9 +994,11 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 
 `PLATFORM=picocalc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
 2 W** (RP2350A, 4 MB flash). Phase 0, the plan, was written on 2026-10-30.
-**Phase 1 is built and not yet run on hardware:** the board, a stub video
-driver, the UART0 console and a once-a-second `STAT` line. There is no picture
-and no keyboard yet.
+**Phase 1 runs on hardware** (a Pico 2 W, 2026-10-30): the board, a stub video
+driver, the UART0 console and a once-a-second `STAT` line. SD, PWM audio and
+disc autoboot work. MODE 7 runs at 92 to 94%, bitmap modes at 100%. There is
+no picture and no keyboard yet. **Switch the PicoCalc on whenever the Pico
+runs**: an unpowered card reads back as zeros until all power is removed.
 
 ```bash
 PLATFORM=picocalc ./build.sh     # HDMI_DRIVER defaults to LCD_SPI; USB_HID=1 is rejected
