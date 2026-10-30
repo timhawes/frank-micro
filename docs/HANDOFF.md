@@ -1226,8 +1226,9 @@ CS change goes through it: commands, parameters, and the last row before CS
 rises. Bulk rows still use `spi_write_blocking()`, since no pin changes between
 them.
 
-**After the fix,** `RAMRD` shows black outside the frame and demo colours
-inside. The push rate and emulation speed are unchanged.
+**After the fix,** `RAMRD` showed black outside the frame and demo colours
+inside. The push rate and emulation speed were unchanged. **That was not
+enough on its own**: the panel still showed mostly noise. See the next entry.
 
 **The rule for any later SPI code here, Phase 5's DMA included:** never move
 DC or CS on the strength of `spi_write_blocking()` returning.
@@ -1241,6 +1242,47 @@ DC or CS on the strength of `spi_write_blocking()` returning.
   firmware left core 0 spinning at boot on the SDK's timer spin lock (lock 10),
   with core 1 still in the bootrom. Three further resets booted cleanly. Treat
   it as an artefact of the debug session unless it recurs from a power-on.
+
+### 2026-10-30: the panel drops commands when CS and DC move at full speed
+
+With `lcd_send_sync()` in place, the panel still showed mostly its random
+power-on memory, with one narrow band of BBC picture.
+
+**What isolated it.**
+
+- A firmware test wrote a known full-screen pattern through the normal
+  `lcd_window()` path at 24 MHz. Read back from gdb, it sometimes landed in
+  full and sometimes not at all, with identical code.
+- Everything gdb sent itself always landed: commands, register reads, and a
+  single 160 KB data stream at 24 MHz. The difference is that gdb takes
+  milliseconds between moving CS or DC and starting the next transfer.
+- The firmware's own `RAMRD` readback returned zeros every time. Its
+  `CASET`, `RASET` and `RAMRD` were sent at full speed, then read at 1 MHz.
+  So the commands were the part being lost, not the pixel data.
+
+**The cause.** Commands were lost at random when CS or DC changed within
+nanoseconds of a transfer starting or ending. When `CASET`, `RASET` or `RAMWR`
+is missed, a whole frame goes nowhere. The power-on clear could also be lost,
+which is why the noise filled the whole panel. The panel's write clock is
+rated to 15 MHz, so at 24 MHz there is no margin in any of its SPI timings.
+
+**The fix.** `lcd_cs()` and `lcd_dc()` wait 64 cycles, about 250 ns, on each
+side of the pin change (`LCD_SETTLE_CYCLES`). That is a few microseconds a
+frame. With it, the test pattern landed on every run, and a firmware
+self-check confirmed it in steady state. The self-check read one column back
+from the panel every 30 frames and compared it with what had been sent: zero
+mismatches in the picture area.
+
+**Readback traps, for whoever debugs this panel next.**
+
+- `RAMRD` returns one dummy byte, then 2 bytes per pixel in `COLMOD` 0x55.
+- Reading while the firmware is pushing frames tells you nothing unless the
+  commands before the read land reliably. All-zero reads are not proof that
+  the panel's memory is blank.
+- gdb sessions that call into the firmware can leave core 0 hung in
+  `advance_hardware()`. Reset before trusting `STAT` again.
+- The old gdb scripts used `screen_mem[1]` as scratch, which scribbles on a
+  live framebuffer. Harmless for a frame, but misleading in a dump.
 
 ## Dead ends, so nobody retries them
 

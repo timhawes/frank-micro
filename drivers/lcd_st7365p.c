@@ -62,8 +62,20 @@ static bool      s_greyscale  = false;
 
 /* ── SPI and pin helpers, core 1 only ─────────────────────────────────────── */
 
-static inline void lcd_cs(bool level) { gpio_put(LCD_PIN_CS, level); }
-static inline void lcd_dc(bool level) { gpio_put(LCD_PIN_DC, level); }
+/*
+ * Every change of CS or DC is padded by a short wait on each side, about
+ * 250 ns at 252 MHz.  Without it, at 24 MHz the panel intermittently missed
+ * CASET, RASET or RAMWR: whole frames, and the power-on clear, went nowhere,
+ * and the screen showed the panel's random power-on memory with an
+ * occasional band of picture.  Every SPI timing on the panel was then far
+ * tighter than the datasheet asks (its write clock is rated to 15 MHz), and
+ * the same command sequence sent slowly from a debugger always worked.  The
+ * cost is a few microseconds a frame.
+ */
+#define LCD_SETTLE_CYCLES 64
+static inline void lcd_settle(void) { busy_wait_at_least_cycles(LCD_SETTLE_CYCLES); }
+static inline void lcd_cs(bool level) { lcd_settle(); gpio_put(LCD_PIN_CS, level); lcd_settle(); }
+static inline void lcd_dc(bool level) { lcd_settle(); gpio_put(LCD_PIN_DC, level); lcd_settle(); }
 
 /*
  * Send bytes and return only once the last one has left the shifter.
