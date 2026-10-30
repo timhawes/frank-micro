@@ -994,7 +994,7 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 
 `PLATFORM=picocalc`: a ClockworkPi PicoCalc, mainboard v2.0, with a **Pico 2 or Pico
 2 W** (RP2350A, 4 MB flash). Phase 0, the plan, was written on 2026-10-30.
-**Phases 1 and 2 run on hardware** (a Pico 2 W, 2026-10-30): the board, the
+**Phases 1 and 2 are signed off on hardware** (a Pico 2 W, 2026-10-30): the board, the
 UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
 a second. Emulation is at 100% in every mode, MODE 7 included. There is no

@@ -536,7 +536,7 @@ keyboard yet, a disc whose `!BOOT` runs `MODE 1` gives the bitmap mode.
 
 Also carried in from Phase 1: MODE 7 at 100%.
 
-**Built and run 2026-10-30, on branch `picocalc-phase2`.** The panel is driven
+**Signed off 2026-10-30, after running on a Pico 2 W; branch `picocalc-phase2`.** The panel is driven
 and the console shows 14–15 frames a second sent to it. Every emulated frame
 now runs at 100%, MODE 7 included, at 69–74% busy.
 

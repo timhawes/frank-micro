@@ -521,6 +521,20 @@ met in bitmap modes only; MODE 7 runs at 92 to 94%. That shortfall moves to
 phase 2, whose LCD row conversion replaces the slow step, and phase 2's exit
 should include MODE 7 at 100%. Phase 2 starts on branch `picocalc-phase2`.
 
+### 2026-10-30: PicoCalc phase 2 signed off
+
+The user signed off phase 2 after looking at the panel. The checks:
+
+- MODE 7 and bitmap modes from the demo disc.
+- The MOS banner and BASIC prompt, booted from a blank disc.
+- Orientation.
+- A red, green and blue bar test, which confirmed the colour order.
+
+MODE 7 runs at 100%, which closes the item carried over from phase 1. The
+panel receives 14 to 15 frames a second at 24 MHz with blocking SPI. Phase 5
+brings changed-row tracking and DMA. Phase 3, the keyboard, starts on branch
+`picocalc-phase3`, off `picocalc-phase2`.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
