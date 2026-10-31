@@ -535,6 +535,14 @@ panel receives 14 to 15 frames a second at 24 MHz with blocking SPI. Phase 5
 brings changed-row tracking and DMA. Phase 3, the keyboard, starts on branch
 `picocalc-phase3`, off `picocalc-phase2`.
 
+### 2026-10-31: PicoCalc phase 3 signed off
+
+The user signed off phase 3 after checking every key, BASIC typing with
+symbols, the BREAK variants, Alt+D and Alt+S, and the steady overlay.
+`-fwrapv` stays on `picocalc` only, by the user's decision; the other boards
+are not to be touched. Phase 4, sound, starts on branch `picocalc-phase4`,
+off `picocalc-phase3`, and inherits the `busy` climb recorded below.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
@@ -1346,7 +1354,8 @@ wrongly blamed on gdb calls into the firmware.
 flags, so they should all hang at 17.9 minutes too. On a board with the
 watchdog running and no debugger attached, it would show as a reboot. The
 fix is a one-line CMake change, but those boards are frozen until someone can
-run them past 18 minutes, so it has not been applied to them. `CLAUDE.md`
+run them past 18 minutes, so it has not been applied to them. The user
+decided on 2026-10-31 to leave them alone in this work. `CLAUDE.md`
 section 9's "several minutes of running" check is too short to catch this:
 run for at least 20.
 

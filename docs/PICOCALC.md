@@ -580,7 +580,7 @@ table is private to `keyboard.c`.
 **Exit:** typing and running a BASIC program works. Every key in section 7
 works. Alt+D and Alt+S open the loader and settings.
 
-**Built and run on a Pico 2 W, 2026-10-30 to 31, branch `picocalc-phase3`.**
+**Signed off 2026-10-31, after running on a Pico 2 W; branch `picocalc-phase3`.**
 The user typed and ran BASIC with every symbol, and checked:
 
 - COPY, DELETE and Caps
