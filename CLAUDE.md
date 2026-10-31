@@ -997,9 +997,14 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 **Phases 1 and 2 are signed off on hardware** (a Pico 2 W, 2026-10-30): the board, the
 UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
-a second. Emulation is at 100% in every mode, MODE 7 included. There is no
-keyboard yet. **Switch the PicoCalc on whenever the Pico
-runs**: an unpowered card reads back as zeros until all power is removed.
+a second. Emulation is at 100% in every mode, MODE 7 included. **Phase 3, the
+keyboard, runs on hardware** and awaits sign-off. **Switch the PicoCalc on
+whenever the Pico runs**: an unpowered card reads back as zeros until all
+power is removed.
+
+**This build has `-fwrapv`, and no other board does yet.** Without it the
+emulator hangs after 17.9 minutes, when its cycle counter passes 2^31. Every
+other board should have the same fault; see `docs/HANDOFF.md`.
 
 ```bash
 PLATFORM=picocalc ./build.sh     # HDMI_DRIVER defaults to LCD_SPI; USB_HID=1 is rejected
@@ -1016,6 +1021,7 @@ The `STAT` line reports:
 - `scr`: a hash of BBC RAM &3000–&7FFF
 - `disc0`: the disc in drive 0
 - `drop`: console characters dropped
+- `kbd_err`: keyboard I²C errors and stalled reads
 
 A test disc at `/micro/disk/drivea.ssd` autoboots with no `micro.ini`. The brief is `REQUIREMENTS.md`, the plan is
 `docs/PICOCALC.md`, and decisions are logged in `docs/HANDOFF.md`. Update this
@@ -1034,11 +1040,13 @@ What makes it different from every other board:
   on `i2c1`, GPIO 6 and 7. Its shipped firmware (0x16) **ignores writes to the
   config register**, so Shift always changes the reported code, and the
   release of a key can carry a different code from its press. The layer in
-  `frank_keyboard.c` therefore tracks physical keys. Never sleep or block on
+  `frank_kbd_picocalc.c` therefore tracks physical keys. Never sleep or block on
   the bus: the sample driver's 16 ms sleep cannot run on core 0. See
   `docs/PICOCALC.md` section 5.2.
 - **No F11 or F12.** Alt+D opens the disc loader, Alt+S the settings, Alt+P
-  takes a screenshot. The key map is `docs/PICOCALC.md` section 7.
+  takes a screenshot. Alt+Esc is SHIFT-BREAK. Never use Alt with the **left**
+  Shift: it trips a hidden NumLock in the keyboard firmware that swallows
+  Space, `,`, `.` and `B`. The key map is `docs/PICOCALC.md` section 7.
 - **Audio is PWM only,** on GPIO 26 and 27, which are one slice. No HDMI audio,
   no I2S.
 - **The console is UART0, GPIO 0 and 1,** and it reaches the PicoCalc's own

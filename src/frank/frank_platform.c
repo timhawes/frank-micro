@@ -50,6 +50,8 @@
 #include "uart_stdio_nb.h"    /* the PicoCalc's non-blocking UART0 console   */
 #include "lcd_st7365p.h"      /* lcd_present_count, lcd_frames_sent          */
 #include "frank_disc.h"       /* frank_disc_name(), for the status line      */
+#include "frank_kbd_picocalc.h"  /* frank_kbd_picocalc_init()                 */
+#include "picocalc_kbd.h"     /* picocalc_kbd_errors(), for the status line   */
 #endif
 
 #ifndef FRANK_MICRO_VERSION
@@ -116,11 +118,11 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     uint32_t busy = (uint32_t)(((dt_us - idle) * 100u + dt_us / 2) / dt_us);
     const char *disc = frank_disc_name(0);
     seconds++;
-    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu\n",
+    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu kbd_err=%lu\n",
            (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
            (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
            (unsigned long)(push_now - push_last), (unsigned long)pc_screen_hash(), disc ? disc : "-",
-           (unsigned long)uart_stdio_nb_dropped());
+           (unsigned long)uart_stdio_nb_dropped(), (unsigned long)picocalc_kbd_errors());
     lcd_last = lcd_now;
     push_last = push_now;
     s_pc_idle_us = 0;
@@ -530,6 +532,10 @@ int main(void) {
 #ifdef HAS_PS2
     ps2kbd_init();
     printf("PS/2 keyboard ready\n");
+#endif
+#ifdef PLATFORM_PICOCALC
+    frank_kbd_picocalc_init();
+    printf("PicoCalc keyboard ready on I2C 0x%02x\n", KBD_I2C_ADDR);
 #endif
 
 #ifdef USB_HOST_5V_EN_PIN

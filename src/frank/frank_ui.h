@@ -56,11 +56,16 @@ void frank_ui_render(uint8_t *fb, int stride, int height);
  * Used to confirm actions such as saving a screenshot. */
 void frank_ui_toast(const char *msg);
 
-#ifdef HDMI_HSTX
+#if defined(HDMI_HSTX) || defined(VIDEO_LCD_SPI)
 /* Horizontal span of framebuffer row `y` that the overlay currently owns, in
  * framebuffer coordinates, or false if the overlay does not cover that row.
  *
- * Only the single-buffered HSTX path needs this. There the emulator writes
+ * The PicoCalc's LCD path needs it too: core 1 takes about three emulated
+ * frames to send one to the panel, so core 0 is already repainting the
+ * buffer it is sending, and an overlay composited only at the end of the
+ * frame flickered.  Yielding the span keeps it painted in both buffers.
+ *
+ * The single-buffered HSTX path needs it for a related reason. There the emulator writes
  * every row ahead of the scanout beam, so anything composited on top after
  * the rows are written is erased before it is ever displayed. The blit skips
  * this span rather than repainting it, and frank_ui_render() keeps it

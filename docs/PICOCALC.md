@@ -310,9 +310,9 @@ firmware `BIOSVERSION 0x16`:
 - **`receiveEvent()` has no case for `REG_ID_CFG`.** A write to 0x02 falls into
   `default` and changes nothing. Shipped firmware therefore always has
   `CFG_USE_MODS` and `CFG_REPORT_MODS` set. The brief's open question about
-  this is settled from source. **Needs hardware**: confirm the version
-  register (0x01) reads 0x16 on the unit. Other firmware may behave
-  differently.
+  this is settled from source. **On the unit (2026-10-30) the version
+  register (0x01) reads `00 00`, not 0x16**, but every behaviour below was
+  observed exactly as described, so section 7 stands.
 - With `CFG_REPORT_MODS`, modifiers arrive as their own events: Alt 0xA1,
   left Shift 0xA2, right Shift 0xA3, Ctrl 0xA5. Caps Lock 0xC1 arrives as an
   ordinary key, and the firmware keeps its own toggle state.
@@ -342,24 +342,40 @@ firmware `BIOSVERSION 0x16`:
    16-entry TX FIFO and starts a new transaction by itself after a STOP. Each
    poll (once per 20 ms frame, from `frank_keyboard_poll()`) first collects
    the read bytes left in the RX FIFO by the previous poll. It then queues up
-   to four `[write 0x09, STOP][read, read+STOP]` transactions and returns at
-   once. That gives up to four events per frame, 200 a second, with 2 to 3 ms
-   of bus time running in hardware. If the STM32 turns out to need a gap
-   between the write and the read, the fallback is an `alarm_pool` callback
-   that issues the read a millisecond after the write. It stays non-blocking
-   and costs one event per callback. **Needs hardware.**
-4. **Boot.** Read 0x01 (version) and log it. Then drain the FIFO, so that keys
-   pressed during power-up are not replayed.
+   three `[write 0x09, STOP][read, read+STOP]` transactions and returns at
+   once. **Settled on hardware:** the STM32 needs no gap between the write and
+   the read. At ClockworkPi's 10 kHz, one transaction takes about 5 ms, so
+   three a frame is about 15 ms of bus time run by the hardware, and up to
+   150 events a second against about 10 from a held key.
+4. **Boot.** The FIFO was found full of stale events at boot. Events are
+   discarded until the first empty read. The version register is not read,
+   since it says nothing useful on this firmware.
+
+**Two things found on hardware that change nothing above but must not be
+retried or tripped over:**
+
+- **Registers 0x0C and 0x0D**, the "C64" raw matrix and joystick bits, answer
+  with their headers but never showed a key down on the unit. Reading physical
+  key state that way would have removed every code-mapping problem above. It
+  does not work on this firmware.
+- **Alt plus left Shift switches on a hidden NumLock** (`next_item_state()` in
+  `keyboard.ino`). The firmware then treats every key as Alt-modified and
+  swallows Space, `,`, `.` and `B` (its backlight and battery chords) until
+  Shift is next pressed with another key. Nothing on the Pico can turn it off.
+  This is why SHIFT-BREAK is Alt+Esc rather than Alt+Shift+Esc. Alt plus
+  right Shift sets the firmware's caps state instead, which the layer
+  ignores.
 
 **Where it lives.** `drivers/picocalc_kbd.c` owns the I²C and yields
-`(state, code)` pairs. The PicoCalc-to-BBC layer goes in
-`src/frank/frank_keyboard.c` behind a new `HAS_PICOCALC_KBD`. It emits
+`(state, code)` pairs. The PicoCalc-to-BBC layer is
+`src/frank/frank_kbd_picocalc.c`, built for `picocalc` only and called from
+`frank_keyboard_poll()` behind `PLATFORM_PICOCALC`. It emits
 `ALLEGRO_KEY_*` codes directly rather than going through XT scancodes, because
 two of the BBC keys it needs (`\|` via `ALLEGRO_KEY_BACKSLASH2`, and SHIFT LOCK
 via `ALLEGRO_KEY_PAD_EQUALS`) have no XT code in `xt_to_allegro[]`. The
-overlay and chord handling in `process_xt_event()` is factored into a helper
-both paths call. The PS/2 and USB paths' preprocessor output does not change,
-which section 7 of `CLAUDE.md` asks for.
+overlay and chord handling in `process_xt_event()` is about ten lines, and is
+repeated in the new file rather than factored out, so that no other board's
+build changes.
 
 ### 5.3 A console that cannot block core 0
 
@@ -427,7 +443,7 @@ it is not used.
 | BBC key | PicoCalc | Note |
 |---|---|---|
 | BREAK | Shift+Esc | BBC SHIFT forced off, so this is a plain BREAK |
-| SHIFT-BREAK | Alt+Shift+Esc | Autoboot by hand. The F11 loader already autoboots drive 0 |
+| SHIFT-BREAK | Alt+Esc | Autoboot by hand. The F11 loader already autoboots drive 0. Was Alt+Shift+Esc; changed 2026-10-30 because Alt + left Shift trips a firmware trap (section 5.2) |
 | CTRL-BREAK | Ctrl+Shift+Esc | |
 | ESCAPE | Esc | |
 | COPY | Shift+Del (the End legend) | BBC SHIFT forced off |
@@ -441,12 +457,16 @@ it is not used.
 | Cursor keys | arrows | Shift+↑/↓ (PgUp/PgDn legends) stay SHIFT+cursor |
 | f0–f9 | F10, F1–F9 | As agreed |
 
-How BREAK is done: B-em has no BREAK in its key matrix. frank-micro's
-autoboot does SHIFT-BREAK as `key_down(LSHIFT)` then `m6502_reset()`
-(`frank_disc.c`, the autoboot state machine). The layer does the same, with
-BBC SHIFT and CTRL set as the table says. Whether `m6502_reset()` or
-`main_reset()` is the right call for a plain BREAK, as opposed to a power-on
-reset, is checked in Phase 3.
+How BREAK is done: B-em has no BREAK in its key matrix. Its own BREAK key
+(the F12 case of `main_key_down()` in `src/bem/main.c`) calls
+`m6502_reset()`, `video_reset()` and `wd1770_reset()`, and the layer does the
+same, with BBC SHIFT and CTRL set as the table says. The MOS reads SHIFT and
+CTRL shortly after the reset, so that state is held for a second however
+briefly the key is tapped, as the autoboot in `frank_disc.c` does.
+
+Allegro codes, for anyone reading `frank_kbd_picocalc.c`: B-em's
+`ALLEGRO_KEY_F1` is BBC **f0**, so f1–f9 are `ALLEGRO_KEY_F2`–`F10`. COPY is
+`ALLEGRO_KEY_END`.
 
 ### 7.3 Symbols
 
@@ -553,11 +573,32 @@ disc (the swap in `docs/HANDOFF.md`), and were readable in MODE 7.
 ### Phase 3: keyboard
 
 `drivers/picocalc_kbd.c` and the section 7 layer. Every event goes to the
-console as `KBD st=N key=0xNN -> BBC 0xNN [shift forced on|off]` until Phase 6
-quietens it.
+console as `KBD st=N key=0xNN -> al=N [shift forced on|off]` until Phase 6
+quietens it. `al` is the Allegro code sent to B-em, since the BBC matrix
+table is private to `keyboard.c`.
 
 **Exit:** typing and running a BASIC program works. Every key in section 7
 works. Alt+D and Alt+S open the loader and settings.
+
+**Built and run on a Pico 2 W, 2026-10-30 to 31, branch `picocalc-phase3`.**
+The user typed and ran BASIC with every symbol, and checked:
+
+- COPY, DELETE and Caps
+- f-keys with `*KEY`
+- BREAK and CTRL-BREAK
+- Alt+D and Alt+S
+
+All keys are correct, with no I²C errors. Keyboard polling does not show in
+`busy`. Two fixes came out of testing:
+
+- **Overlay flicker on the LCD,** fixed by the HSTX build's row-span and
+  redraw-on-change mechanisms.
+- **A hang at 17.9 minutes,** which affects every board. It is fixed here
+  with `-fwrapv`, and the build has now run past 20 minutes. See
+  `docs/HANDOFF.md`.
+
+RAM is 314,548 B. The frozen boards are byte-identical once the build date
+is normalised.
 
 ### Phase 4: sound
 
@@ -633,11 +674,11 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 | Question | Blocks | How to settle |
 |---|---|---|
 | What SPI clock does the panel take before the picture corrupts? | N2 | Phase 5, stepping up from 24 MHz |
-| Does the STM32 need a gap between the FIFO write and the read? | Keyboard throughput | Phase 3, back-to-back first |
-| Does the unit's keyboard firmware report version 0x16? | Whether section 5.2 applies | Phase 3 boot log. Other firmware may honour the config write, which would make section 7 simpler |
+| Does the STM32 need a gap between the FIFO write and the read? | Keyboard throughput | **Answered 2026-10-30: no.** Back-to-back transactions work |
+| Does the unit's keyboard firmware report version 0x16? | Whether section 5.2 applies | **Answered 2026-10-30: it reads `00 00`**, but behaves exactly as 0x16's source describes, so section 5.2 applies |
 | Is the `TE` pin really unconnected, rather than lost in text extraction? | Tear-free display | A visual check of the schematic's LCD connector |
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional; power draw | Current draw, W against non-W |
-| Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | Phase 3, against B-em's own BREAK handling |
+| Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | **Answered 2026-10-30: neither alone.** B-em's BREAK is `m6502_reset()`, `video_reset()` and `wd1770_reset()`; section 7.2 |
 | Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | **Answered 2026-10-30: yes, and yes.** With `INVON`, `MADCTL` 0x48 and `LCD_SWAP_RB` 0, the picture is upright, unmirrored and not inverted, and pure red, green and blue bars show true |
 | Is a Phase 6 battery reading percent alone, or has it a charging flag? | Status line wording | Read `battery.ino` in Phase 6 |
 

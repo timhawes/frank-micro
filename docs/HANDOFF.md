@@ -1298,7 +1298,123 @@ mismatches in the picture area.
 - The old gdb scripts used `screen_mem[1]` as scratch, which scribbles on a
   live framebuffer. Harmless for a frame, but misleading in a dump.
 
+### 2026-10-30: the PicoCalc keyboard, as found on the unit
+
+Probed with a temporary build before Phase 3 was planned.
+
+- **The event FIFO (register 0x09) behaves exactly as the firmware source at
+  `fdcfe2c` says.**
+  - Letters arrive lower case.
+  - Shift+3 arrives, and is released, as `#`.
+  - Modifiers send their own events.
+  - Held printable keys, Enter and arrows re-report as *pressed* every
+    100 ms. Held modifiers and other keys report *hold*.
+- **No gap is needed** between the write of 0x09 and the read.
+  ClockworkPi's sample sleeps 16 ms; that is unnecessary.
+- **At 10 kHz one FIFO transaction takes about 5 ms.** The driver queues
+  three a frame, all run by the I²C block's own command FIFO.
+- **The FIFO is full of stale events at boot.** They are discarded until the
+  first empty read.
+- **The version register reads `00 00`,** not the source's 0x16.
+- **Alt plus left Shift switches on a hidden NumLock.** The firmware then
+  swallows Space `,` `.` `B` until Shift is next pressed with another key.
+  The user moved SHIFT-BREAK from Alt+Shift+Esc to Alt+Esc because of it.
+
+### 2026-10-30: every board hangs after 17.9 minutes; fixed on the PicoCalc only
+
+**Symptom.** The PicoCalc's screen froze and the console went silent. Core 0
+was spinning in `advance_hardware()` (`src/bem/thumb_cpu/src/cpu_mem.c`).
+Both times it happened, `lcd_present_count` read exactly 53,714. That
+deterministic count is what gave it away; the first occurrence had been
+wrongly blamed on gdb calls into the firmware.
+
+**Cause.**
+
+- 53,714 frames of 40,000 cycles is just over 2^31. The hardware event queue
+  keeps `int32_t` cycle timestamps and compares them as `(a - b) <= 0` (in
+  `upsert_hw_event()` and `advance_hardware()`), which is meant to be safe
+  across the wrap.
+- But signed overflow is undefined in C, and at `-O2` GCC compiles it as a
+  direct `cmp a, b`.
+- Once the counter passes 2^31, every pending event looks overdue, and the
+  loop never returns.
+
+**Fix.** `-fwrapv` on the `frank-micro` target, for `picocalc` only.
+`advance_hardware()` then compiles to a subtract and a compare with zero.
+
+**Other boards.** Every other board compiles the same code with the same
+flags, so they should all hang at 17.9 minutes too. On a board with the
+watchdog running and no debugger attached, it would show as a reboot. The
+fix is a one-line CMake change, but those boards are frozen until someone can
+run them past 18 minutes, so it has not been applied to them. `CLAUDE.md`
+section 9's "several minutes of running" check is too short to catch this:
+run for at least 20.
+
+### 2026-10-30: the overlay flickered on the PicoCalc LCD
+
+Core 1 takes about three emulated frames to send each buffer to the panel, so
+core 0 is usually repainting the buffer being sent. Two fixes, both from the
+HSTX build, which has the same hazard for a different reason:
+
+- **`blit_row()` leaves alone the span the overlay owns**
+  (`frank_ui_row_span()`, now built for `VIDEO_LCD_SPI` too). Otherwise the
+  overlay was missing from rows repainted mid-send. This alone reduced the
+  flicker.
+- **The overlay is redrawn only when it changes.** It is drawn twice per
+  change, once into each buffer. A row sent between the background fill and
+  the text had flickered.
+
+The user confirmed both pop-ups steady.
+
+### 2026-10-31: on the PicoCalc, `busy` climbs to 100% while the CPU is idle
+
+**What was seen.** On a static screen with no input, `busy` rose steadily
+from about 74% to 100% over about seven minutes, then stayed there. It
+reproduced from a reset: Esc at 9 s, then hands off. Emulation stayed at
+100% throughout.
+
+**What it is not.** Backtraces taken at the 100% reading put about 40% of
+core 0 in the pacer's idle wait, so the CPU was not saturated. But a gdb halt
+pauses the timer while the PWM audio DMA keeps draining, so halting disturbs
+exactly the thing being measured. `busy` read 74% straight after the samples.
+
+**Likely cause, not yet proven.**
+
+- `pwm_audio_push_samples_blocking()` waits for a free DMA buffer.
+- The PWM side runs at exactly 31,250 Hz (wrap 8063 at 252 MHz, read back).
+- If the emulator makes samples even slightly faster than that, for example
+  through per-frame cycle overshoot, the two buffers fill over minutes. From
+  then on every push waits, the pacer finds nothing to wait for, and the
+  wait counts as busy. The pacer's own comment expects this ("a blocking
+  audio backend is setting the pace").
+
+**Why it matters.**
+
+- `busy` cannot be trusted as a headroom measure after the first few minutes
+  of a session.
+- Phase 4's non-blocking push would drop samples at this same rate, which is
+  audible. Phase 4 has to measure the real production rate, then either let
+  audio set the pace without counting it as busy, or adjust the rate.
+
+### 2026-10-31: the frozen-boards sweep must normalise the build date
+
+The SDK's binary info embeds the build date (`__DATE__`, e.g. `Oct 31 2026`)
+in every firmware image. A sweep run on a different day from its baseline
+therefore differs on all 22 variants with no source change. Building the
+Phase 2 commit, which matched on the 30th, reproduced the new hashes on the
+31st. Before hashing, replace the date string in the `.bin` with the
+baseline's (the same length). With that, Phase 3 matched the baseline on all
+22.
+
 ## Dead ends, so nobody retries them
+
+### The PicoCalc keyboard's raw-matrix registers, 0x0C and 0x0D
+
+The firmware source has "C64" registers returning the raw key matrix (nine
+bytes) and the arrow keys. Reading physical key state would have removed every
+code-mapping problem in `docs/PICOCALC.md` section 5.2. On the unit they
+answer with their headers, but never showed a key down across five held keys,
+so Phase 3 uses the event FIFO.
 
 ### `drivers/HDMI_vga_hstx.c` is not a starting point for an HSTX driver
 

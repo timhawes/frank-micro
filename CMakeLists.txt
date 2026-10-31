@@ -455,6 +455,7 @@ elseif(HDMI_DRIVER STREQUAL "LCD_SPI")
     add_library(drivers
         drivers/lcd_st7365p.c
         drivers/uart_stdio_nb.c
+        drivers/picocalc_kbd.c
         drivers/crash_handler.c
         drivers/tlv320dac3100.c
         drivers/audio.c
@@ -645,6 +646,12 @@ set(PICO_PORT
     src/Pico/ui_font.c           # 6x8 bitmap font for the overlay
 )
 
+# The PicoCalc's keyboard layer is added for that board alone, so no other
+# board's build gains even an empty object.
+if(PLATFORM STREQUAL "picocalc")
+    list(APPEND PICO_PORT src/frank/frank_kbd_picocalc.c)
+endif()
+
 add_executable(frank-micro
     ${BBC_ENGINE}
     ${JIT_STUBS}
@@ -774,6 +781,18 @@ target_compile_options(frank-micro PRIVATE
     -Wno-format
     -Wno-parentheses
 )
+
+# The Thumb 6502 core's event queue compares 32-bit cycle timestamps with
+# "(a - b) <= 0", meant to survive the counter wrapping.  That relies on signed
+# overflow, which C leaves undefined, and at -O2 GCC compiles it as "a <= b".
+# At 2 MHz the counter passes 2^31 after 17.9 minutes, every event then looks
+# overdue, and advance_hardware() never returns.  -fwrapv makes the wrap
+# behave as the code assumes.  PicoCalc only for now: every other board builds
+# the same code and should have the same fault, but they are frozen until
+# someone can test them.  See docs/HANDOFF.md.
+if(PLATFORM STREQUAL "picocalc")
+    target_compile_options(frank-micro PRIVATE -fwrapv)
+endif()
 
 # b-em sources include C++ (al_stub) — already enabled at project() level.
 

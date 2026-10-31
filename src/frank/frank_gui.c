@@ -272,6 +272,33 @@ static void FRANK_GUI_HOT(blit_row)(const uint16_t *src, int y, bool teletext) {
     for (int x = 0; x < FB_BBC_W; x++)
         dst[x] = FRAMEBUFFER_PIXEL(rgb555_to_bbc(src[x]));
 #else
+#ifdef VIDEO_LCD_SPI
+    /*
+     * The panel receives a frame over about three emulated frames, so this
+     * buffer is usually still being sent while it is repainted.  An overlay
+     * composited at the end of the frame was missing from the rows repainted
+     * mid-send, and flickered.  So, as under HSTX, the span the overlay owns
+     * is left alone: the row is drawn to a scratch line and only the part
+     * outside the span is copied in.
+     */
+    int ox0, ox1;
+    if (frank_ui_row_span(y, FB_W, &ox0, &ox1)) {
+        static uint8_t __attribute__((aligned(4))) line[FB_BBC_W];
+        if (teletext) {
+            blit_row_teletext(src, line);
+        } else {
+            if (!s_px_ready) s_px_fill();
+            for (int x = 0; x < FB_BBC_W; x++)
+                line[x] = s_px[px_key(src[x * 2])] & 7u;
+        }
+        int s0 = ox0 - FB_X0, s1 = ox1 - FB_X0;
+        if (s0 < 0) s0 = 0; else if (s0 > FB_BBC_W) s0 = FB_BBC_W;
+        if (s1 < 0) s1 = 0; else if (s1 > FB_BBC_W) s1 = FB_BBC_W;
+        for (int x = 0; x < s0; x++) dst[x] = line[x];
+        for (int x = s1; x < FB_BBC_W; x++) dst[x] = line[x];
+        return;
+    }
+#endif
     if (teletext) {
         blit_row_teletext(src, dst);
     } else {

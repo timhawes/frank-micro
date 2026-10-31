@@ -26,6 +26,10 @@
 #include "frank_screenshot.h"   /* g_frank_screenshot_pending */
 #include "frank_settings.h"     /* frank_gamepad_key_for() — gamepad → BBC key */
 
+#ifdef PLATFORM_PICOCALC
+#include "frank_kbd_picocalc.h"  /* the PicoCalc's I2C keyboard, section 7 map */
+#endif
+
 #ifdef USB_HID_ENABLED
 #include "usbhid.h"             /* usbhid_get_key_action() — raw HID usage */
 #include "usbhid_wrapper.h"     /* usbhid_wrapper_tick(), _get_joystick()  */
@@ -345,6 +349,9 @@ void frank_keyboard_poll(void) {
 
 #ifdef USB_HID_ENABLED
     frank_usb_keyboard_poll(&ctrl_held, &alt_held);
+#endif
+#ifdef PLATFORM_PICOCALC
+    frank_kbd_picocalc_poll();
 #endif
     frank_gamepad_poll();   /* wired NES/SNES pads (+ USB gamepad if enabled) */
 }

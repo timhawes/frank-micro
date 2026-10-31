@@ -101,6 +101,14 @@ static int  disk_total_rows(void)   { return disk_entry_offset() + g_frank_disk_
 #ifdef HDMI_HSTX
 static bool s_dirty = true;
 static void frank_ui_mark_dirty(void) { s_dirty = true; }
+#elif defined(VIDEO_LCD_SPI)
+/* The PicoCalc's LCD path has the same hazard for a different reason: core 1
+ * spends about three emulated frames sending each buffer to the panel, so a
+ * redraw lands in a buffer that is being sent, and a row caught between the
+ * background fill and the text flickered.  There are two buffers, so a change
+ * is drawn twice, once into each. */
+static int s_dirty = 2;
+static void frank_ui_mark_dirty(void) { s_dirty = 2; }
 #else
 #define frank_ui_mark_dirty() ((void)0)
 #endif
@@ -600,7 +608,7 @@ static void render_disk_browser(uint8_t *fb, int stride) {
 static int toast_w(void)  { return (int)strlen(s_toast) * UI_CHAR_W + 12; }
 static int toast_x(int stride) { return (stride - toast_w()) / 2; }
 
-#ifdef HDMI_HSTX
+#if defined(HDMI_HSTX) || defined(VIDEO_LCD_SPI)
 bool frank_ui_row_span(int y, int stride, int *x0, int *x1) {
     bool any = false;
     int lo = 0, hi = 0;
@@ -642,6 +650,9 @@ void frank_ui_render(uint8_t *fb, int stride, int height) {
 #ifdef HDMI_HSTX
     if (!s_dirty) return;
     s_dirty = false;
+#elif defined(VIDEO_LCD_SPI)
+    if (!s_dirty) return;
+    s_dirty--;
 #endif
 
     if (toast_visible) {
