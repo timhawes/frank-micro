@@ -1387,23 +1387,46 @@ core 0 in the pacer's idle wait, so the CPU was not saturated. But a gdb halt
 pauses the timer while the PWM audio DMA keeps draining, so halting disturbs
 exactly the thing being measured. `busy` read 74% straight after the samples.
 
-**Likely cause, not yet proven.**
+**Cause.** The producer and the output run at slightly different rates, and
+the output's wait was counted as work.
 
-- `pwm_audio_push_samples_blocking()` waits for a free DMA buffer.
-- The PWM side runs at exactly 31,250 Hz (wrap 8063 at 252 MHz, read back).
-- If the emulator makes samples even slightly faster than that, for example
-  through per-frame cycle overshoot, the two buffers fill over minutes. From
-  then on every push waits, the pacer finds nothing to wait for, and the
-  wait counts as busy. The pacer's own comment expects this ("a blocking
-  audio backend is setting the pace").
+- The PWM side plays exactly 31,250 Hz: wrap 8063 at 252 MHz, read back,
+  from the same crystal as the timer.
+- The emulator makes one sample per 64 emulated cycles. `m6502_exec()` sets
+  each frame's limit relative to where the last frame stopped
+  (`get_cpu_timestamp() + 40000`, `src/bem/thumb_cpu/src/adapter.c`), so
+  each frame's overshoot is never paid back and the emulator runs slightly
+  fast.
+- Measured with phase 4's ring, from the slope of its fill over nine
+  minutes: the producer is **about 5 ppm fast**, 0.16 samples a second.
+- `pwm_audio_push_samples_blocking()` starts with both its buffers full
+  (the pre-roll), so from boot every push can wait. As the producer drifts
+  ahead, the wait inside the push grows by microseconds a second, and the
+  pacer's idle wait shrinks to match. `busy` counts the first and not the
+  second, so it climbs until audio is pacing the emulator outright.
 
-**Why it matters.**
+Five ppm is the right direction but on the small side to account for the
+whole 26-point climb in seven minutes. The drift may depend on what the
+6502 is running (instruction length sets the overshoot), and the original
+measurement was on an idle BASIC prompt. Not pursued further, because the
+fix below does not depend on the exact figure.
 
-- `busy` cannot be trusted as a headroom measure after the first few minutes
-  of a session.
-- Phase 4's non-blocking push would drop samples at this same rate, which is
-  audible. Phase 4 has to measure the real production rate, then either let
-  audio set the pace without counting it as busy, or adjust the rate.
+**Fixed in phase 4, on the PicoCalc only.**
+
+- `drivers/pwm_ring_audio.c` replaces the blocking push with a 4,096-sample
+  ring that the producer never waits on.
+- The ring keeps about 2,048 samples queued by skipping or repeating at most
+  one sample per 882-sample block. That handles 35 samples a second, against
+  the 0.16 measured.
+- Over ten minutes `busy` stayed flat at 76–77%. There were no underruns
+  and no dropped blocks.
+
+**Not fixed at the source.** Paying back the overshoot in `adapter.c` would
+cure the producer itself. But that is vendored `src/bem/` code shared by
+every board, and the other boards are frozen. They keep the blocking I2S and
+PWM pushes, so their pacer figures will show the same slow climb. It is
+harmless there apart from what the pacer reports, and HDMI audio there
+resamples into a ring of its own.
 
 ### 2026-10-31: the frozen-boards sweep must normalise the build date
 

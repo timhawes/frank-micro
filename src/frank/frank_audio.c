@@ -24,6 +24,9 @@
 #include "frank_settings.h"
 #include "audio.h"          /* I2S DAC driver (drivers/audio.c)            */
 #include "pwm_audio.h"      /* PWM audio driver (drivers/pwm_audio)        */
+#if defined(PLATFORM_PICOCALC)
+#include "pwm_ring_audio.h" /* non-blocking PWM ring (drivers/)            */
+#endif
 
 #if defined(HDMI_PIO_AUDIO)
 #include "frank_hdmi.h"
@@ -108,6 +111,14 @@ static void ensure_i2s(void) {
 }
 
 static void ensure_pwm(void) {
+#if defined(PLATFORM_PICOCALC)
+    /* PicoCalc: a ring the producer never waits on (pwm_ring_audio.c). */
+    if (!s_pwm_inited) {
+        pwm_ring_init(PWM_PIN0, PWM_PIN1, FRANK_AUDIO_RATE);
+        s_pwm_inited = true;
+    }
+    return;
+#endif
     if (!s_pwm_inited) {
         pwm_audio_init(PWM_PIN0, PWM_PIN1, FRANK_AUDIO_RATE);
         /* One full give-frame (882 samples) per DMA buffer so every buffer is
@@ -133,6 +144,9 @@ static void i2s_quiet(void) {
 
 static void pwm_quiet(void) {
     if (!s_pwm_inited) return;
+#if defined(PLATFORM_PICOCALC)
+    return;   /* PWM is the only backend here, so it is never switched away from */
+#endif
     /* pwm_audio_fill_silence() drops when no buffer is free, so retry briefly
      * to make sure both DMA buffers end up silent. */
     for (int i = 0; i < 8; ++i) {
@@ -281,7 +295,12 @@ void give_audio_buffer(struct audio_buffer_pool *ac, struct audio_buffer *buffer
             mono[i] = (int16_t)(((int32_t)src[i] * vol) / 100);
         /* Blocking, exactly one full DMA buffer per call: self-paced to the
          * PWM output clock (like I2S) with no drops and no silence padding. */
+#if defined(PLATFORM_PICOCALC)
+        /* Never waits; absorbs the small rate difference (pwm_ring_audio.c). */
+        pwm_ring_push(mono, (int)cnt);
+#else
         pwm_audio_push_samples_blocking(mono, (int)cnt);
+#endif
         return;
     }
 

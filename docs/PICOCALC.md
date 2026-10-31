@@ -186,10 +186,14 @@ recomputes the divider and gets 25.2 MHz, provided the move happens before
 
 ### PWM audio, stereo on one slice
 
-`pwm_audio_init()` detects `stereo_same_slice` and drives both channels from
-one slice's packed CC register. GPIO 26 and 27 are slice 5 A and B, so that
-path is taken. DMA channels 8 and 9 are hardcoded and nothing else on `picocalc`
-uses them. The amplifier enable `PA_EN` belongs to the STM32, which holds it
+GPIO 26 and 27 are slice 5 A and B, so one slice's packed CC register
+drives both. Since Phase 4 the PicoCalc does not use `pwm_audio.c`: its
+blocking push let the audio clock pace the emulator. It uses
+`drivers/pwm_ring_audio.c` instead, a 4,096-sample ring played by DMA
+channels 8 and 9 in a loop with no interrupt. The producer never waits, and
+the ring absorbs the producer's small rate error by skipping or repeating at
+most one sample per block (see `docs/HANDOFF.md`). Nothing else on
+`picocalc` uses channels 8 and 9. The amplifier enable `PA_EN` belongs to the STM32, which holds it
 high at boot (`picocalc_keyboard.ino`, `setup()`), so the Pico has nothing to
 switch.
 
@@ -610,6 +614,23 @@ on the status line.
 **Exit:** a game with music plays for five minutes with no audible dropouts and
 a drop count of zero.
 
+**Built and run on a Pico 2 W, 2026-10-31, branch `picocalc-phase4`.** The
+settings and backend were already PWM-only from Phase 1, so this phase is
+the driver: `drivers/pwm_ring_audio.c`, described in section 3. `STAT`
+gains four fields:
+
+- `snd`: samples queued after the last push. It hovers near 2,048.
+- `trim`: samples skipped (+) or repeated (−), cumulative.
+- `und`: underruns.
+- `sdrop`: blocks dropped for lack of room. Expected only with Limit Speed
+  off.
+
+Measured over twenty minutes, past the 17.9-minute mark: `busy` was flat
+at 76–77%, `und` and `sdrop` were 0, and
+the producer runs 5 ppm fast. `trim` moves about 50 in the first minute,
+while the fill settles from where the first push placed it, and is then
+still. RAM is 317,704 B.
+
 ### Phase 5: speed
 
 Changed-row tracking, double line buffers on DMA, `clk_peri` on `clk_sys`, then
@@ -645,7 +666,8 @@ real-time.
 
 **PIO.** None used. All three blocks are free.
 
-**DMA.** PWM hardcodes 8 and 9. The LCD claims dynamically, after audio init
+**DMA.** PWM hardcodes 8 and 9; on `picocalc` they are the ring and its
+loop channel. The LCD claims dynamically, after audio init
 (section 5.1). The I2S code is compiled but never initialised on `picocalc`, so 10
 and 11 are idle.
 

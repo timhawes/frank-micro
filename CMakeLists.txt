@@ -456,6 +456,7 @@ elseif(HDMI_DRIVER STREQUAL "LCD_SPI")
         drivers/lcd_st7365p.c
         drivers/uart_stdio_nb.c
         drivers/picocalc_kbd.c
+        drivers/pwm_ring_audio.c
         drivers/crash_handler.c
         drivers/tlv320dac3100.c
         drivers/audio.c

@@ -52,6 +52,7 @@
 #include "frank_disc.h"       /* frank_disc_name(), for the status line      */
 #include "frank_kbd_picocalc.h"  /* frank_kbd_picocalc_init()                 */
 #include "picocalc_kbd.h"     /* picocalc_kbd_errors(), for the status line   */
+#include "pwm_ring_audio.h"   /* pwm_ring_get_stats(), for the status line    */
 #endif
 
 #ifndef FRANK_MICRO_VERSION
@@ -118,11 +119,16 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     uint32_t busy = (uint32_t)(((dt_us - idle) * 100u + dt_us / 2) / dt_us);
     const char *disc = frank_disc_name(0);
     seconds++;
-    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu kbd_err=%lu\n",
+    pwm_ring_stats_t snd;
+    pwm_ring_get_stats(&snd);
+    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu kbd_err=%lu"
+           " snd=%lu trim=%ld und=%lu sdrop=%lu\n",
            (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
            (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
            (unsigned long)(push_now - push_last), (unsigned long)pc_screen_hash(), disc ? disc : "-",
-           (unsigned long)uart_stdio_nb_dropped(), (unsigned long)picocalc_kbd_errors());
+           (unsigned long)uart_stdio_nb_dropped(), (unsigned long)picocalc_kbd_errors(),
+           (unsigned long)snd.fill, (long)snd.trim, (unsigned long)snd.underruns,
+           (unsigned long)snd.dropped);
     lcd_last = lcd_now;
     push_last = push_now;
     s_pc_idle_us = 0;

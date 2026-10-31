@@ -998,7 +998,8 @@ installed on this machine, so `./flash.sh` will not run as it stands.
 UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
 a second. Emulation is at 100% in every mode, MODE 7 included. **Phase 3, the
-keyboard, is signed off** (2026-10-31). **Switch the PicoCalc on
+keyboard, is signed off** (2026-10-31). **Phase 4, sound, runs on hardware**
+and awaits sign-off. **Switch the PicoCalc on
 whenever the Pico runs**: an unpowered card reads back as zeros until all
 power is removed.
 
@@ -1022,6 +1023,10 @@ The `STAT` line reports:
 - `disc0`: the disc in drive 0
 - `drop`: console characters dropped
 - `kbd_err`: keyboard I²C errors and stalled reads
+- `snd`: audio samples queued, which hovers near 2,048
+- `trim`: audio samples skipped (+) or repeated (−), cumulative
+- `und`: audio underruns
+- `sdrop`: audio blocks dropped for lack of room
 
 A test disc at `/micro/disk/drivea.ssd` autoboots with no `micro.ini`. The brief is `REQUIREMENTS.md`, the plan is
 `docs/PICOCALC.md`, and decisions are logged in `docs/HANDOFF.md`. Update this
@@ -1048,7 +1053,9 @@ What makes it different from every other board:
   Shift: it trips a hidden NumLock in the keyboard firmware that swallows
   Space, `,`, `.` and `B`. The key map is `docs/PICOCALC.md` section 7.
 - **Audio is PWM only,** on GPIO 26 and 27, which are one slice. No HDMI audio,
-  no I2S.
+  no I2S. It goes through `drivers/pwm_ring_audio.c`, not `pwm_audio.c`:
+  a ring the producer never waits on, which skips or repeats a sample now and
+  then to absorb the emulator's 5 ppm rate error.
 - **The console is UART0, GPIO 0 and 1,** and it reaches the PicoCalc's own
   USB-C port through a CH340C. It needs its own non-blocking stdio driver,
   because the SDK's `stdio_uart` spins when its FIFO fills.
