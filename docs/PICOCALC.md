@@ -614,7 +614,7 @@ on the status line.
 **Exit:** a game with music plays for five minutes with no audible dropouts and
 a drop count of zero.
 
-**Built and run on a Pico 2 W, 2026-10-31, branch `picocalc-phase4`.** The
+**Signed off 2026-11-01, after running on a Pico 2 W; branch `picocalc-phase4`.** The
 settings and backend were already PWM-only from Phase 1, so this phase is
 the driver: `drivers/pwm_ring_audio.c`, described in section 3. `STAT`
 gains four fields:

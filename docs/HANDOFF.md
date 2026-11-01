@@ -543,6 +543,15 @@ symbols, the BREAK variants, Alt+D and Alt+S, and the steady overlay.
 are not to be touched. Phase 4, sound, starts on branch `picocalc-phase4`,
 off `picocalc-phase3`, and inherits the `busy` climb recorded below.
 
+### 2026-11-01: PicoCalc phase 4 signed off
+
+The user signed off phase 4 after hearing music with no gaps, clicks or
+drone; checking volume, sound off (silent since `3f3a1c2`) and `SOUND` from
+BASIC; and opening the disc loader and taking a screenshot during music.
+The MODE 7 test disc also looked right after the colour fix. The other
+boards keep their blocking audio and their MODE 7 fault, by the user's
+decision. Phase 5, speed, is next and needs its own plan.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
