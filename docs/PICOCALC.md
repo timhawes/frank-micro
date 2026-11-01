@@ -629,7 +629,28 @@ Measured over twenty minutes, past the 17.9-minute mark: `busy` was flat
 at 76–77%, `und` and `sdrop` were 0, and
 the producer runs 5 ppm fast. `trim` moves about 50 in the first minute,
 while the fill settles from where the first push placed it, and is then
-still. RAM is 317,704 B.
+still. RAM is 317,632 B.
+
+You checked by ear:
+
+- **Music in a game for five minutes:** no gaps, clicks or drone.
+- **Volume:** works.
+- **`SOUND` from BASIC:** works.
+- **The disc loader:** sound carries on while it is open. It does not stop
+  the emulator.
+- **A screenshot:** stops emulator and sound for a fraction of a second,
+  then both carry on.
+
+Two fixes came out of that testing:
+
+- **Switching sound off looped the last 131 ms** until sound came back on.
+  With sound off the emulator produces nothing at all, so the DMA kept
+  replaying the ring. Each push now silences the part of the ring the output
+  has already played, so a stopped producer runs out into silence.
+- **MODE 7 lost text on coloured backgrounds:** the test disc showed it. The
+  teletext renderer picked the background by brightness, and every primary
+  colour ties at full brightness. The PicoCalc renderer now snaps each sample
+  on its own (`docs/HANDOFF.md`).
 
 ### Phase 5: speed
 
@@ -728,13 +749,15 @@ A `picocalc` ELF must contain the console driver:
 `arm-none-eabi-nm build/frank-micro.elf | grep uart_stdio_nb` must not be
 empty. New drivers are checked with
 `grep -n 'sleep_\|busy_wait\|_blocking' drivers/lcd_st7365p.c
-drivers/picocalc_kbd.c drivers/uart_stdio_nb.c`. Anything left must be on core
+drivers/picocalc_kbd.c drivers/uart_stdio_nb.c drivers/pwm_ring_audio.c`. Anything left must be on core
 1 or justified next to it.
 
 On hardware, the brief's checklist:
 
 - [ ] Cold boot to the Acorn MOS screen
-- [ ] A MODE 7 screen and a bitmap mode
+- [ ] A MODE 7 screen and a bitmap mode. For MODE 7, `tools/mkmode7test.py`
+  builds a test disc covering colours, backgrounds, double height and
+  graphics. Mount it with Alt+D
 - [ ] Mount a disc with Alt+D and SHIFT-BREAK autoboot it
 - [ ] Every key in section 7, including BREAK, ESCAPE, COPY and f0–f9
 - [ ] Sound through the speakers with no dropouts over five minutes

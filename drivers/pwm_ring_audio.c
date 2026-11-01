@@ -156,7 +156,9 @@ void pwm_ring_push(const int16_t *s, int n) {
     if (underrun) {
         /* Restart RING_TARGET - n ahead of the output, with silence in the
          * gap so the stale samples the DMA is about to read are not replayed. */
-        if (s_started) s_stats.underruns++;
+        /* A gap of a second or more is the producer stopping on purpose,
+         * as when sound is switched off, not an underrun. */
+        if (s_started && (now - s_last_us) < 1000000u) s_stats.underruns++;
         s_started = true;
         uint32_t gap = RING_TARGET - (uint32_t)n;
         for (uint32_t i = 8; i < gap; i++) ring[(rd + i) & RING_MASK] = silence_word();
@@ -198,6 +200,12 @@ void pwm_ring_push(const int16_t *s, int n) {
         w = (w + 1u) & RING_MASK;
     }
     s_wr = w;
+
+    /* Silence everything after what was just queued, up to the output.  If
+     * the producer stops, the output then plays silence once the queue runs
+     * out, rather than looping old samples round the ring.  About 2,000
+     * stores; the output never reaches any of them before the queued audio. */
+    for (uint32_t i = w; i != rd; i = (i + 1u) & RING_MASK) ring[i] = silence_word();
 
     fill += (uint32_t)(count + extra);
     s_avg += fill - (s_avg >> AVG_SHIFT);

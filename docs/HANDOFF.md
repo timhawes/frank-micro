@@ -1428,6 +1428,47 @@ PWM pushes, so their pacer figures will show the same slow climb. It is
 harmless there apart from what the pacer reports, and HDMI audio there
 resamples into a ring of its own.
 
+### 2026-11-01: switching sound off looped the last 131 ms on the PicoCalc
+
+Sound off sets B-em's `sound_internal` false, and `sound_poll_n()` then
+produces nothing at all, rather than producing silence. The ring's DMA never
+stops, so with no pushes it replayed the ring until sound came back on. Each
+push now writes silence over everything between what it just queued and
+the output's read position. A producer that stops for any reason, whether
+sound off or a long stall, now runs out into silence. That costs about
+2,000 stores a push.
+
+### 2026-11-01: MODE 7 text vanished on coloured backgrounds
+
+Found with `tools/mkmode7test.py`'s test disc. Yellow on red, white on blue
+and double height on blue showed as bare coloured bars, and yellow on blue
+was garbled.
+
+**Cause.** `blit_row_teletext()` calls the darkest of a cell's six samples
+the background, and paints only samples brighter than it. "Brightness" is
+`lum5()`, the brightest channel, so every primary is 31 and foreground and
+background tie. Raw source rows, captured over SWD, show the samples are
+clean: background at 31 per channel, foreground at 30, and blends of 10 and
+20 only between them.
+
+**Fix, PicoCalc only.** Snap each sample to its nearest BBC colour on its own.
+A per-channel snap of a blend between two primaries always lands on one of
+the two, so no background has to be identified. The margin pixels take
+glyph column 0, which is blank in every SAA5050 alphanumeric. The right
+margin takes column 5 when columns 3 to 5 agree, so contiguous mosaics
+still join. Text on black renders as before.
+
+**Every PIO build has the same fault.** That is m1, m2, z0, and fj without
+HSTX. Their `blit_row_teletext()` is the original algorithm. They are frozen
+by the user's decision, so it is recorded here, not fixed. HSTX is not affected:
+it copies all 640 pixels and has no teletext renderer.
+
+**Not a fault, as far as can be told.** On the test disc, a normal row after
+a lone double-height top half shows blank. Normal-height characters on the
+bottom row of a double-height pair also show blank. Both come from the
+emulator's own rasteriser, which is shared with every board, so they are
+B-em's model of the SAA5050. They have not been checked against a real BBC.
+
 ### 2026-10-31: the frozen-boards sweep must normalise the build date
 
 The SDK's binary info embeds the build date (`__DATE__`, e.g. `Oct 31 2026`)

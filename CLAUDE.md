@@ -108,7 +108,8 @@ real console takes single bytes only.
 `tools/micro_console.py` is frank-cpc's script, speaks that dead protocol, and
 cannot work. Do not use it as a reference. Note that not everything in `tools/`
 is dead: `tools/tlv320_clocks.py` is live and current, and is where the Fruit Jam
-audio codec's clock arithmetic lives.
+audio codec's clock arithmetic lives. `tools/mkssd.py` builds DFS disc images,
+and `tools/mkmode7test.py` uses it to build a MODE 7 test disc.
 
 ### Not compiled, vendored
 

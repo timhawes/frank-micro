@@ -169,10 +169,10 @@ static void blit_row_teletext(const uint16_t *src, uint8_t *dst) {
  * s_px[] maps a pixel to (lum5 << 3) | bbc index.  The pixel's unused bit 5
  * is squeezed out to make a 15-bit key, so the table is 32 KB of RAM.
  *
- * The algorithm is unchanged, so the output is byte-identical to the version
- * above, including which sample wins a tie for the darkest.  Only the
+ * It no longer runs the same algorithm: the version above loses text on a
+ * coloured background, and this one does not (see inside).  Only the
  * PicoCalc uses it because the other boards cannot be tested here; it is
- * portable to them as it stands.
+ * portable to them as it stands, and would fix the same fault there.
  */
 static uint8_t s_px[32768];
 static bool    s_px_ready;
@@ -196,9 +196,8 @@ static void __not_in_flash_func(blit_row_teletext)(const uint16_t *src, uint8_t 
         const uint16_t *cell = src + c * 16;
         uint8_t *o = dst + c * 8;
 
-        /* A cell whose six samples are the same pixel is all background:
-         * nothing is brighter than the darkest sample.  Most of a teletext
-         * screen is such cells. */
+        /* A cell whose six samples are the same pixel is one colour.  Most of
+         * a teletext screen is such cells. */
         const uint16_t p0 = cell[0];
         if (cell[2] == p0 && cell[5] == p0 && cell[8] == p0 &&
             cell[11] == p0 && cell[14] == p0) {
@@ -208,23 +207,30 @@ static void __not_in_flash_func(blit_row_teletext)(const uint16_t *src, uint8_t 
             continue;
         }
 
-        uint8_t v[6] = {
-            s_px[px_key(cell[0])],  s_px[px_key(cell[2])],  s_px[px_key(cell[5])],
-            s_px[px_key(cell[8])],  s_px[px_key(cell[11])], s_px[px_key(cell[14])],
-        };
-
-        /* Cell background = darkest sample, the first one on a tie. */
-        uint8_t bgv = v[0];
-        for (int i = 1; i < 6; i++)
-            if ((v[i] >> 3) < (bgv >> 3)) bgv = v[i];
-        const uint8_t bg = bgv & 7u, bglum = bgv >> 3;
-
-        o[0] = bg;
-        for (int i = 0; i < 6; i++) {
-            uint8_t l = v[i] >> 3;
-            o[i + 1] = (l >= TELETEXT_INK_LUM && l > bglum) ? (v[i] & 7u) : bg;
-        }
-        o[7] = bg;
+        /* Each sample is snapped to its nearest BBC colour on its own.  The
+         * PIO renderer above instead calls the darkest sample the background
+         * and drops anything not brighter than it, which loses all text on a
+         * coloured background: lum5() is the brightest channel, so yellow
+         * on red, or white on blue, tie.  Snapping needs no background: a
+         * sample is either the foreground or the background, and the
+         * blends between them that the engine leaves next to each dot snap
+         * per channel to whichever of the two they are nearer.
+         *
+         * The two margin pixels still need a colour.  Glyph column 0 is
+         * blank in every SAA5050 alphanumeric, so it is the background and
+         * fills the left margin.  The right margin takes column 5 when
+         * columns 3 to 5 agree, which is a mosaic's right-hand block, and
+         * column 0 otherwise.  Contiguous graphics then join up across
+         * cells, and text keeps a background gap. */
+        const uint8_t c0 = s_px[px_key(cell[0])]  & 7u;
+        const uint8_t c1 = s_px[px_key(cell[2])]  & 7u;
+        const uint8_t c2 = s_px[px_key(cell[5])]  & 7u;
+        const uint8_t c3 = s_px[px_key(cell[8])]  & 7u;
+        const uint8_t c4 = s_px[px_key(cell[11])] & 7u;
+        const uint8_t c5 = s_px[px_key(cell[14])] & 7u;
+        o[0] = c0;
+        o[1] = c0; o[2] = c1; o[3] = c2; o[4] = c3; o[5] = c4; o[6] = c5;
+        o[7] = (c3 == c5 && c4 == c5) ? c5 : c0;
     }
 }
 #endif /* teletext renderer */
