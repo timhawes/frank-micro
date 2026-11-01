@@ -175,6 +175,12 @@ void frank_perf_tick(void) {
     /* Feed the watchdog so a genuine hang (not a fault) is detected/rebooted. */
     crash_handler_feed();
 
+#ifdef PLATFORM_PICOCALC
+    /* With sound off nothing is pushed, so only this stops the audio ring
+     * replaying its last 65 ms for ever (pwm_ring_audio.c). */
+    pwm_ring_service();
+#endif
+
     /* ── 50 Hz pacer ─────────────────────────────────────────────────────────
      *
      * Sleep until the next 20 ms wall-clock boundary so the emulator runs at

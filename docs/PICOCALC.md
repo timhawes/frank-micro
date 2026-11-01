@@ -645,8 +645,10 @@ Two fixes came out of that testing:
 
 - **Switching sound off looped the last 131 ms** until sound came back on.
   With sound off the emulator produces nothing at all, so the DMA kept
-  replaying the ring. Each push now silences the part of the ring the output
-  has already played, so a stopped producer runs out into silence.
+  replaying the ring. Each push silences the part of the ring the output
+  has already played. So does `pwm_ring_service()`, once a frame, because
+  with sound off there are no pushes. That second part was missing from the
+  first fix, and the loop came back.
 - **MODE 7 lost text on coloured backgrounds:** the test disc showed it. The
   teletext renderer picked the background by brightness, and every primary
   colour ties at full brightness. The PicoCalc renderer now snaps each sample

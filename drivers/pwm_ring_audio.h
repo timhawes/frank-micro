@@ -20,6 +20,11 @@ void pwm_ring_init(uint pin_l, uint pin_r, uint32_t sample_rate);
  * sample per call. */
 void pwm_ring_push(const int16_t *s, int n);
 
+/* Silence what has already been played.  Call about once a frame, from the
+ * same core as pwm_ring_push(), whether or not anything is being pushed:
+ * without it a producer that stops leaves the ring looping. */
+void pwm_ring_service(void);
+
 typedef struct {
     uint32_t pushes;     /* calls to pwm_ring_push()                        */
     uint32_t dropped;    /* whole blocks dropped: no room (producer too fast) */

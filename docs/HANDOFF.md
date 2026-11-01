@@ -1434,9 +1434,19 @@ Sound off sets B-em's `sound_internal` false, and `sound_poll_n()` then
 produces nothing at all, rather than producing silence. The ring's DMA never
 stops, so with no pushes it replayed the ring until sound came back on. Each
 push now writes silence over everything between what it just queued and
-the output's read position. A producer that stops for any reason, whether
-sound off or a long stall, now runs out into silence. That costs about
-2,000 stores a push.
+the output's read position. That costs about 2,000 stores a push.
+
+**That alone did not fix it,** and the user heard the loop again. The wipe
+covers only what had been played by the time of the push. With no more
+pushes, nothing clears the last block's queued audio once it has been
+played, so the DMA laps the ring and plays it again: about 65 ms of sound and
+65 ms of silence, for ever. The fix needs a caller that runs whether or
+not sound is on. `pwm_ring_service()` runs once a frame from
+`frank_perf_tick()` and silences whatever the output has read since the last
+push or service. Once no push has arrived for 120 ms, longer than the most
+the ring ever queues, it silences the whole ring once. Checked over SWD: with
+sound off and the ring filled with a marker, none of the marker was left a
+second later.
 
 ### 2026-11-01: MODE 7 text vanished on coloured backgrounds
 

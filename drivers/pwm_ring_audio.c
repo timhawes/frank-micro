@@ -63,6 +63,8 @@ static uint32_t s_last_fill;         /* fill after the previous push        */
 static uint32_t s_last_us;           /* time of the previous push           */
 static uint32_t s_avg;               /* fill average, << AVG_SHIFT          */
 static bool     s_started;
+static uint32_t s_mark;              /* output position when last cleaned   */
+static bool     s_quiet;             /* whole ring silenced since last push */
 static pwm_ring_stats_t s_stats;
 
 static inline uint32_t silence_word(void) {
@@ -206,12 +208,38 @@ void pwm_ring_push(const int16_t *s, int n) {
      * out, rather than looping old samples round the ring.  About 2,000
      * stores; the output never reaches any of them before the queued audio. */
     for (uint32_t i = w; i != rd; i = (i + 1u) & RING_MASK) ring[i] = silence_word();
+    s_mark  = rd;
+    s_quiet = false;
 
     fill += (uint32_t)(count + extra);
     s_avg += fill - (s_avg >> AVG_SHIFT);
     s_last_fill  = fill;
     s_last_us    = now;
     s_stats.fill = fill;
+}
+
+/* Pushes alone cannot stop a loop.  With sound off B-em produces nothing,
+ * so after the last push its queued audio plays, nobody clears it, and the
+ * DMA laps the ring and plays it again for ever.  This runs once a frame and
+ * silences whatever the output has read since the last push or service.
+ *
+ * The region from s_mark to the read position is all played audio as long
+ * as the output has not lapped the ring since s_mark was taken.  s_mark is
+ * at most one push old, so that holds while pushes are less than a lap
+ * apart.  Once they are further apart than the most the ring ever queues,
+ * everything in it has been played, and the whole ring is silenced once. */
+#define QUIET_AFTER_US 120000u   /* > (RING_LEN - RING_HEADROOM) / rate, < a lap */
+
+void pwm_ring_service(void) {
+    if (!s_started || s_quiet) return;
+    uint32_t rd = dma_read_index();
+    if (time_us_32() - s_last_us >= QUIET_AFTER_US) {
+        for (uint32_t i = 0; i < RING_LEN; i++) ring[i] = silence_word();
+        s_quiet = true;
+        return;
+    }
+    for (uint32_t i = s_mark; i != rd; i = (i + 1u) & RING_MASK) ring[i] = silence_word();
+    s_mark = rd;
 }
 
 void pwm_ring_get_stats(pwm_ring_stats_t *out) {
