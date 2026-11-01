@@ -660,6 +660,22 @@ Changed-row tracking, double line buffers on DMA, `clk_peri` on `clk_sys`, then
 SPI stepped 25.2 → 31.5 → 42 → 63 MHz while the picture stays clean. The rate
 per mode is recorded.
 
+**Tearing, seen by the user at the Phase 4 sign-off (2026-11-01).** The
+Twisted demo's animations tear, most clearly its moving checkerboards. The
+cause is expected: core 1 sends about 15 frames a second while the emulator
+draws 50, and with `TE` unwired nothing ties a send to the panel's scan. The
+Phase 5 plan has to say what it does about this, and Twisted is the test.
+Faster SPI and sending only changed rows shorten each send, which narrows
+the tear but cannot remove it. Two things to weigh:
+
+- Sending only whole emulator frames, never one still being drawn. This
+  stops a send from mixing two BBC frames, which a moving checkerboard
+  shows plainly.
+- Whether the panel's own refresh can be read or inferred well enough to
+  time sends without `TE`, for example by reading its scan line (`45h`)
+  if the panel's data-out line reaches the Pico. Check that before
+  relying on it.
+
 **Exit:** N2 met, measured rates in `docs/HANDOFF.md`.
 
 ### Phase 6: polish
