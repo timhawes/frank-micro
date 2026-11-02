@@ -24,4 +24,18 @@ extern volatile uint32_t lcd_present_count;
  * skips to the newest frame. */
 extern volatile uint32_t lcd_frames_sent;
 
+/* Incremented by core 1 for each row it sends.  Only rows that changed since
+ * the panel last received them are sent, so this measures the real work. */
+extern volatile uint32_t lcd_rows_sent;
+
+/* Microseconds core 1 has spent waiting for the panel's scan to be clear of
+ * the rows it is about to write (lcd_wait_scan()). */
+extern volatile uint32_t lcd_wait_us;
+
+/* Core 0, at the start of each emulated frame: which of the two framebuffers
+ * to draw into.  Never the one core 1 is sending, and, while core 1 is idle,
+ * not the newest complete frame it has yet to take.  Never waits beyond a
+ * few instructions under a spin lock. */
+uint8_t *lcd_begin_frame(uint8_t *a, uint8_t *b);
+
 #endif /* LCD_ST7365P_H */

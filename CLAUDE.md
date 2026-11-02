@@ -1000,7 +1000,7 @@ UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
 a second. Emulation is at 100% in every mode, MODE 7 included. **Phase 3, the
 keyboard, is signed off** (2026-10-31). **Phase 4, sound, is signed off**
-(2026-11-01). **Switch the PicoCalc on
+(2026-11-01). **Phase 5, speed, runs on hardware** and awaits sign-off. **Switch the PicoCalc on
 whenever the Pico runs**: an unpowered card reads back as zeros until all
 power is removed.
 
@@ -1020,6 +1020,8 @@ The `STAT` line reports:
 - `busy`: the share of each frame used before the pacer waited
 - `lcd`: presents per second
 - `push`: frames sent to the panel per second
+- `rows`: rows sent to the panel per second; only changed rows are sent
+- `lwait`: milliseconds a second core 1 waited for the panel's scan
 - `scr`: a hash of BBC RAM &3000–&7FFF
 - `disc0`: the disc in drive 0
 - `drop`: console characters dropped
@@ -1038,9 +1040,11 @@ What makes it different from every other board:
 - **The display is an SPI LCD, not a monitor.** A 320×320 ST7365P on `spi1`,
   GPIO 10 to 15. The 320×256 frame is centred, with 32 rows above and below.
   The panel keeps its own frame memory, so scanout is a bandwidth problem
-  rather than a real-time one. Core 1 pushes only the rows that changed, and
-  the emulator never waits for it. The panel's `TE` pin is not wired, so
-  there is no tear-free sync. The driver is `drivers/lcd_st7365p.c`, built as
+  rather than a real-time one. Core 1 sends only complete frames, and only
+  the rows that changed, by DMA at 63 MHz, and the emulator never waits for
+  it. The panel's `TE` pin is not wired, but its scan line can be read back
+  over MISO, and writes are timed to it. `clk_peri` runs from `clk_sys` to
+  allow that clock. The driver is `drivers/lcd_st7365p.c`, built as
   `HDMI_DRIVER=LCD_SPI`. That value is forced on `picocalc` and rejected elsewhere.
 - **The keyboard reports characters, not positions.** An STM32 at I²C `0x1F`
   on `i2c1`, GPIO 6 and 7. Its shipped firmware (0x16) **ignores writes to the

@@ -110,7 +110,9 @@ static uint32_t pc_screen_hash(void) {
 
 static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     static uint32_t seconds = 0;
-    static uint32_t lcd_last = 0, push_last = 0;
+    static uint32_t lcd_last = 0, push_last = 0, rows_last = 0, wait_last = 0;
+    uint32_t rows_now = lcd_rows_sent;
+    uint32_t wait_now = lcd_wait_us;
     uint32_t lcd_now = lcd_present_count;
     uint32_t push_now = lcd_frames_sent;
     uint32_t fps = (uint32_t)((frames * 1000000ull + dt_us / 2) / dt_us);
@@ -121,16 +123,20 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     seconds++;
     pwm_ring_stats_t snd;
     pwm_ring_get_stats(&snd);
-    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu scr=%08lx disc0=%s drop=%lu kbd_err=%lu"
+    printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu rows=%lu lwait=%lums scr=%08lx disc0=%s drop=%lu kbd_err=%lu"
            " snd=%lu trim=%ld und=%lu sdrop=%lu\n",
            (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
            (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
-           (unsigned long)(push_now - push_last), (unsigned long)pc_screen_hash(), disc ? disc : "-",
+           (unsigned long)(push_now - push_last), (unsigned long)(rows_now - rows_last),
+           (unsigned long)((wait_now - wait_last) / 1000u),
+           (unsigned long)pc_screen_hash(), disc ? disc : "-",
            (unsigned long)uart_stdio_nb_dropped(), (unsigned long)picocalc_kbd_errors(),
            (unsigned long)snd.fill, (long)snd.trim, (unsigned long)snd.underruns,
            (unsigned long)snd.dropped);
     lcd_last = lcd_now;
     push_last = push_now;
+    rows_last = rows_now;
+    wait_last = wait_now;
     s_pc_idle_us = 0;
 }
 #endif /* PLATFORM_PICOCALC */
@@ -479,6 +485,20 @@ int main(void) {
      * there it moves clk_peri off pll_usb, so the UART and SPI0 divisors have
      * to be worked out after it rather than before. */
     hdmi_hstx_clock_init();
+#endif
+#ifdef PLATFORM_PICOCALC
+    /* clk_peri off pll_usb's 48 MHz and onto clk_sys, undivided.  SPI
+     * divides clk_peri by at least 2, so 48 MHz capped the LCD at 24 MHz;
+     * from 252 MHz it can run at 25.2, 31.5, 42 or 63.  Before stdio, the
+     * SD card and the LCD, because each works out its divisor from
+     * clk_peri once, at init.  I2C and PWM run on clk_sys and do not move;
+     * pll_usb is untouched, so USB-CDC is unaffected.  docs/PICOCALC.md
+     * section 6. */
+    {
+        uint32_t sys_hz = clock_get_hz(clk_sys);
+        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
+                        sys_hz, sys_hz);
+    }
 #endif
 
     stdio_init_all();

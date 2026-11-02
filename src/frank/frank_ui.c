@@ -18,6 +18,9 @@
 #include "ui_draw.h"
 #include "crash_handler.h"
 #include "board_config.h"
+#ifdef VIDEO_LCD_SPI
+#include "frank_gui.h"       /* SCREEN[], for the per-buffer redraw bits */
+#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -102,13 +105,13 @@ static int  disk_total_rows(void)   { return disk_entry_offset() + g_frank_disk_
 static bool s_dirty = true;
 static void frank_ui_mark_dirty(void) { s_dirty = true; }
 #elif defined(VIDEO_LCD_SPI)
-/* The PicoCalc's LCD path has the same hazard for a different reason: core 1
- * spends about three emulated frames sending each buffer to the panel, so a
- * redraw lands in a buffer that is being sent, and a row caught between the
- * background fill and the text flickered.  There are two buffers, so a change
- * is drawn twice, once into each. */
-static int s_dirty = 2;
-static void frank_ui_mark_dirty(void) { s_dirty = 2; }
+/* The PicoCalc's LCD path redraws only on a change, as under HSTX, but it has
+ * two buffers, so a change has to reach both.  One bit per buffer.  They do
+ * not strictly alternate: the emulator draws into whichever one core 1 is
+ * not sending (lcd_begin_frame()), so a bit is cleared only by a render
+ * into that buffer. */
+static unsigned s_dirty = 3u;
+static void frank_ui_mark_dirty(void) { s_dirty = 3u; }
 #else
 #define frank_ui_mark_dirty() ((void)0)
 #endif
@@ -651,8 +654,11 @@ void frank_ui_render(uint8_t *fb, int stride, int height) {
     if (!s_dirty) return;
     s_dirty = false;
 #elif defined(VIDEO_LCD_SPI)
-    if (!s_dirty) return;
-    s_dirty--;
+    {
+        unsigned bit = (fb == SCREEN[1]) ? 2u : 1u;
+        if (!(s_dirty & bit)) return;
+        s_dirty &= ~bit;
+    }
 #endif
 
     if (toast_visible) {

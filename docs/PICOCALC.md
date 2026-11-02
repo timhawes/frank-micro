@@ -282,11 +282,18 @@ tracking is the main lever.
    SPI1 in 16-bit frames from one buffer while the CPU fills the other.
 4. `graphics_set_palette()` updates the RGB565 table and clears `row_sum[]`,
    so the next frame resends everything.
-5. If a newer present arrives mid-push, core 1 finishes the current run and
-   starts again from the newest frame. Core 0 never waits for the LCD. While a
-   push is running longer than 20 ms, core 0 can start writing into the buffer
-   being sent. That is the accepted cost: a torn frame, never a slowed
-   emulator.
+5. **As built in Phase 5, core 1 only ever sends complete frames.** Core 0
+   no longer flips buffers blindly: at the start of each frame
+   `lcd_begin_frame()` gives it the buffer core 1 is *not* sending, under a
+   hardware spin lock held for a few instructions. Frames core 1 cannot keep
+   up with are skipped whole. The Phase 0 design accepted torn frames here;
+   on the board they showed as tearing on whole-screen motion, and fixing it
+   cost no RAM. Core 0 still never waits for the LCD.
+7. **Writes are timed to the panel's own refresh.** `TE` is not wired, but
+   MISO is, and `RDSCANLINE` (`45h`) reads back which line the panel is
+   scanning. Core 1 measures the refresh at boot (484 lines in about
+   17,040 µs) and, before each send, waits only if the scan would otherwise
+   cross the rows being written. See `lcd_wait_scan()` for the arithmetic.
 6. The 64 spare rows (0–31 and 288–319) belong to the driver. Phase 6 draws
    the status line there (F11).
 
@@ -411,8 +418,10 @@ no PIO video and no HSTX, but the emulator is tuned there and nothing needs
 more.
 
 `clk_peri` is on `pll_usb` at 48 MHz after `set_sys_clock_khz()`, which caps
-SPI at 24 MHz (SSP divides by at least 2). Phase 5 re-points it at `clk_sys`,
-undivided, at 252 MHz, giving SPI at 63, 42, 31.5 or 25.2 MHz. That is the same
+SPI at 24 MHz (SSP divides by at least 2). Since Phase 5, `main()` re-points
+it at `clk_sys`, undivided, at 252 MHz, giving SPI at 63, 42, 31.5 or
+25.2 MHz. The LCD runs at 63, its reads of the scan line at 8, and the SD
+card at 25.2 for its requested 30. That is the same
 operation `hdmi_hstx_clock_init()` does for the Fruit Jam, with the same rule:
 do it in `main()` immediately after `set_sys_clock_khz()`, before the UART,
 SPI or I²C are initialised, because each computes its divisor from
@@ -665,18 +674,37 @@ Twisted demo's animations tear, most clearly its moving checkerboards. The
 cause is expected: core 1 sends about 15 frames a second while the emulator
 draws 50, and with `TE` unwired nothing ties a send to the panel's scan. The
 Phase 5 plan has to say what it does about this, and Twisted is the test.
-Faster SPI and sending only changed rows shorten each send, which narrows
-the tear but cannot remove it. Two things to weigh:
-
-- Sending only whole emulator frames, never one still being drawn. This
-  stops a send from mixing two BBC frames, which a moving checkerboard
-  shows plainly.
-- Whether the panel's own refresh can be read or inferred well enough to
-  time sends without `TE`, for example by reading its scan line (`45h`)
-  if the panel's data-out line reaches the Pico. Check that before
-  relying on it.
 
 **Exit:** N2 met, measured rates in `docs/HANDOFF.md`.
+
+**Built and run on a Pico 2 W, 2026-11-01 to 02, branch `picocalc-phase5`.**
+Five steps, each run on the board:
+
+1. `clk_peri` on `clk_sys` (section 6).
+2. Whole frames only (section 5.1, item 5). The panel stopped getting rows
+   from several BBC frames in one picture.
+3. DMA and changed rows. `STAT` gains `rows`, the rows sent a second.
+4. The SPI clock stepped 31.5, 42 and 63 MHz, live from the debugger. The
+   user saw no fault at any of them, and no difference between them; 63
+   is built in.
+5. Writes timed to the panel's scan (section 5.1, item 7). `STAT` gains
+   `lwait`, milliseconds a second spent waiting for it. The user compared
+   it on and off on Twisted, with a marker on screen to say which: "Less
+   tearing on green (very good)".
+
+**Rates.** A 25-minute run of the demo disc, emulator at 100% throughout,
+no underruns. What sets the rate is how much of the screen changes, not
+the mode:
+
+| Rows changed per frame | Panel frames per second |
+|---|---|
+| under 10: text, a cursor, a still picture | 50 |
+| 10–50 | 51 on average, never below 44 |
+| 50–150 | 41 on average, never below 34 |
+| 150 or more: whole-screen motion, scrolling | 26 on average, never below 24 |
+
+A whole changed frame takes about 23 ms at 63 MHz, just over one emulated
+frame, so it lands on every other one. RAM 322,408 bytes (61.5%).
 
 ### Phase 6: polish
 
@@ -696,7 +724,9 @@ framebuffers. The closest existing build is `HDMI_PIO` on m2, at 297,268 bytes
 adds about 3.3 KB: a 512-byte RGB565 table, two 640-byte line buffers, 1 KB of
 row sums, and the UART rings. Measured: 277,792 bytes in Phase 1, and
 313,212 (59.7%) in Phase 2, which adds the 32 KB RGB555 lookup table that
-makes the blit cheap enough for MODE 7 (see `docs/HANDOFF.md`). Well inside
+makes the blit cheap enough for MODE 7 (see `docs/HANDOFF.md`). Phase 5,
+with its row sums, line buffers and second hash array, is 322,408 (61.5%).
+Well inside
 N5's ceiling, the `COMPOSITE` build at 393,000 bytes (75%). Core 1's LCD loop runs from RAM
 (`__not_in_flash_func`), per `CLAUDE.md` constraint 4, though it is no longer
 real-time.
@@ -706,8 +736,9 @@ real-time.
 **PIO.** None used. All three blocks are free.
 
 **DMA.** PWM hardcodes 8 and 9; on `picocalc` they are the ring and its
-loop channel. The LCD claims dynamically, after audio init
-(section 5.1). The I2S code is compiled but never initialised on `picocalc`, so 10
+loop channel. The LCD claims two dynamically for its TX and RX, which
+land on 0 and 1, so the order against audio init does not matter. It also
+claims one hardware spin lock, for the frame handover. The I2S code is compiled but never initialised on `picocalc`, so 10
 and 11 are idle.
 
 **IRQs.** `DMA_IRQ_2` PWM, `UART0_IRQ` console, and one `DMA_IRQ_n` for the

@@ -24,6 +24,9 @@
 #include "frank_gui.h"
 #include "frank_ui.h"
 #include "frank_screenshot.h"
+#ifdef VIDEO_LCD_SPI
+#include "lcd_st7365p.h"  /* lcd_begin_frame()                                 */
+#endif
 
 /* The 8-bit framebuffer scanned out by the video driver.  Geometry comes from
  * board_config.h, which sets it from the selected driver. */
@@ -280,12 +283,11 @@ static void FRANK_GUI_HOT(blit_row)(const uint16_t *src, int y, bool teletext) {
 #else
 #ifdef VIDEO_LCD_SPI
     /*
-     * The panel receives a frame over about three emulated frames, so this
-     * buffer is usually still being sent while it is repainted.  An overlay
-     * composited at the end of the frame was missing from the rows repainted
-     * mid-send, and flickered.  So, as under HSTX, the span the overlay owns
-     * is left alone: the row is drawn to a scratch line and only the part
-     * outside the span is copied in.
+     * The overlay is redrawn only when it changes (frank_ui.c), so its span
+     * is left alone here, as under HSTX: the row is drawn to a scratch line
+     * and only the part outside the span is copied in.  Before Phase 5 this
+     * was also what stopped it flickering, when core 1 sent buffers that
+     * were still being drawn.
      */
     int ox0, ox1;
     if (frank_ui_row_span(y, FB_W, &ox0, &ox1)) {
@@ -342,7 +344,13 @@ int x_gui_init(void) {
 struct scanvideo_scanline_buffer *FRANK_GUI_HOT(x_gui_begin_scanline)(void) {
     if (s_scanline_number++ == 0) {
         /* Start of a new frame: draw into the back buffer, bump frame number. */
+#ifdef VIDEO_LCD_SPI
+        /* Not a plain flip: the buffer core 1 is sending stays untouched
+         * until it has gone (drivers/lcd_st7365p.c). */
+        current_buffer = (lcd_begin_frame(SCREEN[0], SCREEN[1]) == SCREEN[1]) ? 1u : 0u;
+#else
         current_buffer ^= 1u;
+#endif
         s_frame_number_part += 0x10000u;
     }
     s_buffer.row0 = row_work0;

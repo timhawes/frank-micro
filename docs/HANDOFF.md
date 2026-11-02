@@ -552,6 +552,12 @@ The MODE 7 test disc also looked right after the colour fix. The other
 boards keep their blocking audio and their MODE 7 fault, by the user's
 decision. Phase 5, speed, is next and needs its own plan.
 
+### 2026-11-02: PicoCalc phase 5 runs on hardware
+
+On branch `picocalc-phase5`, off `picocalc-phase4`; awaiting sign-off. Rates
+per amount of change and the steps are in `docs/PICOCALC.md` section 8. The
+findings worth keeping are below, under 2026-11-02.
+
 ## Findings that changed the plan
 
 ### 2026-08-25: do not do I2C from the audio producer path
@@ -1487,6 +1493,42 @@ a lone double-height top half shows blank. Normal-height characters on the
 bottom row of a double-height pair also show blank. Both come from the
 emulator's own rasteriser, which is shared with every board, so they are
 B-em's model of the SAA5050. They have not been checked against a real BBC.
+
+### 2026-11-02: the PicoCalc's tearing had two causes
+
+The user saw tearing on Twisted's moving checkerboards. Two separate things
+made it:
+
+1. **Several BBC frames in one picture.** A send took about 55 ms, nearly
+   three emulated frames, and core 0 flipped buffers every frame regardless,
+   so it repainted the buffer core 1 was sending. Fixed by handing core 1
+   complete frames only and never drawing into the one it holds
+   (`lcd_begin_frame()`).
+2. **The panel's own refresh.** It redraws from its memory at 58.8 Hz,
+   unsynchronised. A write the scan crosses shows one tear line between two
+   complete frames. `TE` is not wired, but `RDSCANLINE` (`45h`) can be read
+   over MISO, so writes are now started only where the scan will not cross
+   them. The user compared on and off: less tearing, "very good".
+
+What the panel reports, measured: 484 lines a refresh in 17,014 to
+17,042 µs, counting 1 to 483. Replies carry one dummy bit first, so the
+count is the 24 bits read shifted right by 7. Reads are clean at 4, 8 and
+12 MHz and glitched once at 16; the driver reads at 8. `RDDID` (`04h`)
+returned all `FF`, so do not use it to test whether MISO works; `RDDCOLMOD`
+(`0Ch`) returned the `55h` written.
+
+The 640-to-320 point-sampling still aliases fine patterns. That is the
+framebuffer, not the panel, and the same on every board.
+
+### 2026-11-02: halting the PicoCalc from gdb can now reboot it
+
+Writing an SPI register through gdb, which halts both cores, was followed
+about ten seconds later by a reboot, and openocd's log showed it losing
+track of the halt state on detach. Not proved, but the likely chain is
+core 1 left halted while holding the frame-handover spin lock, core 0
+spinning on it, and the watchdog. To poke registers on a running board,
+use openocd's command port instead, which does not halt:
+`echo "mww 0x40088000 0x0107" | nc -q 2 127.0.0.1 4444`.
 
 ### 2026-10-31: the frozen-boards sweep must normalise the build date
 
