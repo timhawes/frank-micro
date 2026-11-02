@@ -221,10 +221,15 @@ static void __not_in_flash_func(blit_row_teletext)(const uint16_t *src, uint8_t 
          *
          * The two margin pixels still need a colour.  Glyph column 0 is
          * blank in every SAA5050 alphanumeric, so it is the background and
-         * fills the left margin.  The right margin takes column 5 when
-         * columns 3 to 5 agree, which is a mosaic's right-hand block, and
-         * column 0 otherwise.  Contiguous graphics then join up across
-         * cells, and text keeps a background gap. */
+         * fills the left margin.  The right margin takes column 5 when the
+         * row is shaped like a mosaic, columns 0 to 2 alike and 3 to 5
+         * alike, so a right-hand block is as wide as a left-hand one; or
+         * when the next cell's column 0 is the same colour, which joins
+         * graphics across cells.  Otherwise it takes column 0.  Letters'
+         * strokes are almost never split exactly in half, and column 0 is
+         * blank after any text.  An earlier rule, column 5 whenever columns
+         * 3 to 5 agreed, matched letters' horizontal strokes and left a
+         * pixel hanging off the right of A, G, H, a, d, e, g, q, y and 9. */
         const uint8_t c0 = s_px[px_key(cell[0])]  & 7u;
         const uint8_t c1 = s_px[px_key(cell[2])]  & 7u;
         const uint8_t c2 = s_px[px_key(cell[5])]  & 7u;
@@ -233,7 +238,9 @@ static void __not_in_flash_func(blit_row_teletext)(const uint16_t *src, uint8_t 
         const uint8_t c5 = s_px[px_key(cell[14])] & 7u;
         o[0] = c0;
         o[1] = c0; o[2] = c1; o[3] = c2; o[4] = c3; o[5] = c4; o[6] = c5;
-        o[7] = (c3 == c5 && c4 == c5) ? c5 : c0;
+        const uint8_t n0 = (c + 1 < FB_BBC_W / 8) ? (s_px[px_key(cell[16])] & 7u) : c0;
+        const bool mosaic = c0 == c1 && c1 == c2 && c3 == c4 && c4 == c5;
+        o[7] = (mosaic || n0 == c5) ? c5 : c0;
     }
 }
 #endif /* teletext renderer */

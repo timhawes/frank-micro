@@ -1481,9 +1481,17 @@ clean: background at 31 per channel, foreground at 30, and blends of 10 and
 **Fix, PicoCalc only.** Snap each sample to its nearest BBC colour on its own.
 A per-channel snap of a blend between two primaries always lands on one of
 the two, so no background has to be identified. The margin pixels take
-glyph column 0, which is blank in every SAA5050 alphanumeric. The right
-margin takes column 5 when columns 3 to 5 agree, so contiguous mosaics
-still join. Text on black renders as before.
+glyph column 0, which is blank in every SAA5050 alphanumeric. Text on black
+renders as before.
+
+**The right margin, corrected 2026-11-02.** It first took column 5 whenever
+columns 3 to 5 agreed, meant for mosaics. That also matched letters'
+horizontal strokes, and the user saw a pixel hanging off the right of
+A, G, H, a, d, e, g, q, y and 9. It now takes column 5 only when the row is
+mosaic-shaped (columns 0 to 2 alike and 3 to 5 alike) or the next cell's
+column 0 matches it. Joining on the next cell alone was tried first and
+notched contiguous mosaics whose right half ends a run. The user confirmed
+both letters and mosaics on the test disc.
 
 **Every PIO build has the same fault.** That is m1, m2, z0, and fj without
 HSTX. Their `blit_row_teletext()` is the original algorithm. They are frozen
@@ -1534,6 +1542,39 @@ console, which cannot send Alt. The user does not count these as a
 problem: they happen while a menu or screenshot is already interrupting
 the game. Writing to the card in pieces between frames would remove them,
 if that ever matters.
+
+### 2026-11-02: the Master Welcome disc's Control Panel draws wrongly (open)
+
+Seen by the user on the PicoCalc with `MasterWelcome.adl`, Master 128 model.
+The Control Panel's screen is badly wrong: boxes and labels in odd places,
+striped red and yellow garbage, "Welcome Utilities" overprinted on another
+field, a letter missing from "File Server", and no values after "Rate",
+"Delay" or the time. Deferred by the user, to come back to.
+
+What was established, over openocd without halting:
+
+- **The picture is faithful to memory.** The shadow screen at `&3000` to
+  `&7FFF`, dumped and decoded as MODE 1 off the board, shows the same broken
+  picture as the framebuffer. So the rasteriser, the blit and the panel are
+  not at fault.
+- **The video set-up is right.** CRTC R1 80, R6 32, R9 7, start `&0600`
+  (`&3000`); `scrsize` 1, a 20 KB screen; ACCCON `&1B` (D, E, Y and ITU set);
+  `_shadow` 1, and `hc_state.ram_base` is `ram + 0x8000`.
+- **So the program's own drawing went wrong:** the CPU or the memory
+  mapping, in the shared core (`src/bem/thumb_cpu/`), and so probably every
+  board. Suspects: a 65C12-only instruction in the Thumb 6502 core, an
+  ACCCON shadow-access edge case in `fe34_write()`
+  (`src/bem/thumb_cpu/src/cpu_mem.c`), or CMOS RAM and clock reads, given
+  the missing values.
+
+Next step when this is picked up: build upstream B-em on the host and run
+the same disc for a reference picture and memory to compare. The disc image
+is on the user's card, not in the repository. A fix lands in `src/bem/`,
+shared with the frozen boards, so whether it goes to them is the user's
+decision.
+
+Noticed in passing, not the cause here: the B+ branch of `fe34_write()`
+tests `val & 80`, decimal, where `0x80` was surely meant.
 
 ### 2026-11-02: halting the PicoCalc from gdb can now reboot it
 
