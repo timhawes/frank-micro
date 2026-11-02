@@ -1543,38 +1543,63 @@ problem: they happen while a menu or screenshot is already interrupting
 the game. Writing to the card in pieces between frames would remove them,
 if that ever matters.
 
-### 2026-11-02: the Master Welcome disc's Control Panel draws wrongly (open)
+### 2026-11-02: the Master Welcome disc's Control Panel, fixed in the shared core
 
-Seen by the user on the PicoCalc with `MasterWelcome.adl`, Master 128 model.
-The Control Panel's screen is badly wrong: boxes and labels in odd places,
-striped red and yellow garbage, "Welcome Utilities" overprinted on another
-field, a letter missing from "File Server", and no values after "Rate",
-"Delay" or the time. Deferred by the user, to come back to.
+Seen by the user on the PicoCalc with `MasterWelcome.adl`, Master 128 model:
+the Control Panel drew half its screen, then stopped at `at line 90`, and
+afterwards BREAK no longer cleared the screen properly. The Welcome menus also
+showed glitches that upstream B-em does not. Different on every run.
 
-What was established, over openocd without halting:
+**Two bugs, both in code every board shares. Both fixes are confirmed on the
+PicoCalc only.** Every other board compiles; none has been run. See "Needs
+hardware" below.
 
-- **The picture is faithful to memory.** The shadow screen at `&3000` to
-  `&7FFF`, dumped and decoded as MODE 1 off the board, shows the same broken
-  picture as the framebuffer. So the rasteriser, the blit and the panel are
-  not at fault.
-- **The video set-up is right.** CRTC R1 80, R6 32, R9 7, start `&0600`
-  (`&3000`); `scrsize` 1, a 20 KB screen; ACCCON `&1B` (D, E, Y and ITU set);
-  `_shadow` 1, and `hc_state.ram_base` is `ram + 0x8000`.
-- **So the program's own drawing went wrong:** the CPU or the memory
-  mapping, in the shared core (`src/bem/thumb_cpu/`), and so probably every
-  board. Suspects: a 65C12-only instruction in the Thumb 6502 core, an
-  ACCCON shadow-access edge case in `fe34_write()`
-  (`src/bem/thumb_cpu/src/cpu_mem.c`), or CMOS RAM and clock reads, given
-  the missing values.
+**1. Shadow-screen writes landing in main RAM** (`CPURun()`,
+`src/bem/thumb_cpu/src/cpu/cpu.c`). The asm 6502 core addresses memory through
+the RP2350 interpolator, whose `base[0]` holds the map in use. The map depends
+on where the code runs: MOS VDU code at `&C000`–`&DFFF` gets the "OS" map,
+which sees the shadow screen at `&3000`–`&7FFF` when ACCCON's E bit is set.
+The asm switches maps only on a jump, and `CPURun()` reset `base[0]` to the
+normal map at every entry, once per emulated frame. A frame boundary during a
+VDU routine, a screen clear for instance, therefore finished that routine with
+the normal map, writing the shadow screen into main RAM.
 
-Next step when this is picked up: build upstream B-em on the host and run
-the same disc for a reference picture and memory to compare. The disc image
-is on the user's card, not in the repository. A fix lands in `src/bem/`,
-shared with the frozen boards, so whether it goes to them is the user's
-decision.
+The Control Panel (`$.LIBRARY.Panel`) unpacks itself to `&6000`–`&76BD`,
+directly under its own 20 KB shadow screen, so it was overwritten (about 520
+bytes of zeros at `&68B7`), ran into a `BRK`, and BASIC reported it at line
+90. How it was found: upstream B-em (`stardot/b-em` `a76c365`, built on the
+host) drew the Panel correctly; dumping both memories showed the zeroed code;
+a hardware watchpoint on main `&6A00` then caught the MOS VDU code at `&CB9A`
+writing it, with `cpu_memHandlers[0xC]` correctly the OS map but the
+interpolator still holding the normal one.
 
-Noticed in passing, not the cause here: the B+ branch of `fe34_write()`
-tests `val & 80`, decimal, where `0x80` was surely meant.
+Fix: `CPURun()` loads `cpu_memHandlers[pc >> 12]` into the interpolator
+before every `entry_6502()`. One load per entry, not per instruction. Four
+minutes of Twisted ran at 100% with no underruns.
+
+**2. The Master's clock ran at a tenth of real speed**
+(`src/bem/pico/stub_allegro5/include/allegro5/allegro.h`). The stub's
+`time()` divided microseconds by 10,000,000. Measured: 3 emulated seconds in
+32 real ones. Now 1,000,000. The clock still starts at Thursday 1 January
+1970 at power-on, because no board has a battery clock to set it from. The
+other users of this `time()` are the SN76489's random seed and a log
+timestamp, neither of which depends on the rate.
+
+**Ruled out on the way:** the disc geometry and sector offsets for ADFS L,
+the CMOS and system VIA code (both match upstream), and the ACCCON decode in
+`fe34_write()`. Two speculative changes to that decode and to `emit_pc_changed`
+in `gen_asm.rb` did not fix it and were reverted. Their reasoning still
+stands as differences from upstream that nothing has shown to matter:
+
+- `fe34_write()` picks the OS map on E alone. Upstream also gives code at
+  `&C000`–`&DFFF` the normal map when HAZEL (Y) is paged over it, and gives VDU
+  code main RAM when X is set and E is clear.
+- `emit_pc_changed` on the Master switches maps only for jumps to `&C000` and
+  above, and not for page `&FF`. A return from VDU code straight to code below
+  `&C000` would keep the OS map.
+
+Noticed in passing: the B+ branch of `fe34_write()` tests `val & 80`, decimal,
+where `0x80` was surely meant.
 
 ### 2026-11-02: PicoCalc Phase 6 decisions
 
@@ -1743,6 +1768,8 @@ than a detail.
 | Does the onboard speaker work? | Nothing. Same driver, different output | Attach a speaker to the JST connector |
 | Is the analogue stage clipping at 100 percent volume? | Nothing now: I2S was reported sounding good once the automute was removed. Left here only as the first thing to check if distortion is ever reported | Listen at 85 percent and compare |
 | Which physical button is GPIO 4 and which is GPIO 5? | Nothing. Cosmetic | The board layout or a multimeter. The schematic's net and part names are crossed |
+
+| **Added 2026-11-02.** Do the two shared-core fixes hold on boards other than the PicoCalc: the shadow-screen map in `CPURun()` and the clock rate? | Confidence that they are safe everywhere. They change every board's build and were only run on the PicoCalc | Master 128 model, `MasterWelcome.adl`: `*ADFS`, `*EXEC !Boot`, 1, 4. The Control Panel should draw fully and stay up, its seconds should tick at real speed, and BREAK afterwards should clear the screen. Also a few minutes of a demo for speed. A Fruit Jam tester is lined up |
 
 Settled since the last revision of this table, both by reading source rather
 than by testing: how many PIO blocks and state machines PIO-USB needs, and which

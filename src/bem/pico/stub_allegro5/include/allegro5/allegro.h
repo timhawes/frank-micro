@@ -417,7 +417,7 @@ enum {
 #if !PICO_NO_HARDWARE
 typedef	int64_t	time_t;
 static inline time_t time(time_t *tsec) {
-    time_t t = to_us_since_boot(get_absolute_time()) / 10000000;
+    time_t t = to_us_since_boot(get_absolute_time()) / 1000000;   /* seconds since boot */
     if (tsec) *tsec = t;
     return t;
 }

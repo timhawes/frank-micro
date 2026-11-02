@@ -834,6 +834,18 @@ Full detail and citations in `docs/INVESTIGATION.md`. Ranked.
 | Build | Application and emulation core build at `-O2` while drivers build at `-O3`; undocumented and possibly unintended |
 | Process | No CI, no tests |
 
+**Fixed 2026-11-02 in shared code, confirmed on the PicoCalc only.** Every
+board compiles with them; none other has been run. A Fruit Jam tester is
+lined up. Details and the test are in `docs/HANDOFF.md`.
+
+- **The Master's shadow screen leaked into main RAM.** `CPURun()` in
+  `src/bem/thumb_cpu/src/cpu/cpu.c` reset the interpolator to the normal
+  memory map once per frame, so MOS VDU code caught by a frame boundary wrote
+  shadow-screen data over main RAM. It crashed the Master Welcome disc's
+  Control Panel and left BREAK unable to clear the screen.
+- **The Master's clock ran at a tenth of real speed.** The stub `time()` in
+  `src/bem/pico/stub_allegro5/include/allegro5/allegro.h` divided by 10^7.
+
 
 ## 12. The Fruit Jam, and what makes it different
 

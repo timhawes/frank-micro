@@ -281,6 +281,8 @@ void CPUUpdatePC(uint16_t _pc)
 #if THUMB_CPU_USE_ASM
 
 
+extern MemHandler *cpu_memHandlers[16];   // cpu_mem.c: the map for each 4K of PC
+
 void __time_critical_func(CPURun)( bool c6512 )
 {
     DEBUG_PINS_SET(core_use, 1);
@@ -300,6 +302,13 @@ void __time_critical_func(CPURun)( bool c6512 )
     set_next_cpu_clk();
     // hw_event version
     while (g_cpu.clk < 0) {
+#if PICO_ON_DEVICE && !PI_ASM32
+        // entry_6502 uses whatever map the interpolator holds, and the asm
+        // only switches maps on a jump.  Pick the map for the current PC, or
+        // the MOS VDU code (C000-DFFF) resumes with the normal map after a
+        // frame or a breakout and writes the shadow screen into main RAM.
+        interp0->base[ 0 ] = (uintptr_t)( cpu_memHandlers[ g_cpu.pc >> 12 ] );
+#endif
         entry_6502( &g_cpu );
 #ifndef CPU_ASM_INLINE_BREAKOUT
         CPUASMBreakout();
