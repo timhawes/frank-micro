@@ -552,11 +552,13 @@ The MODE 7 test disc also looked right after the colour fix. The other
 boards keep their blocking audio and their MODE 7 fault, by the user's
 decision. Phase 5, speed, is next and needs its own plan.
 
-### 2026-11-02: PicoCalc phase 5 runs on hardware
+### 2026-11-02: PicoCalc phase 5 signed off
 
-On branch `picocalc-phase5`, off `picocalc-phase4`; awaiting sign-off. Rates
-per amount of change and the steps are in `docs/PICOCALC.md` section 8. The
-findings worth keeping are below, under 2026-11-02.
+On branch `picocalc-phase5`, off `picocalc-phase4`. The user signed it off
+after watching the SPI clock stepped to 63 MHz with no fault, and comparing
+scan-timed writes on and off on Twisted. Rates per amount of change and the
+steps are in `docs/PICOCALC.md` section 8. The findings worth keeping are
+below, under 2026-11-02. Phase 6, polish, is next and needs its own plan.
 
 ## Findings that changed the plan
 
@@ -1519,6 +1521,19 @@ returned all `FF`, so do not use it to test whether MISO works; `RDDCOLMOD`
 
 The 640-to-320 point-sampling still aliases fine patterns. That is the
 framebuffer, not the panel, and the same on every board.
+
+### 2026-11-02: SD writes show as audio underruns, by design
+
+The user's 90-minute session under the Phase 4 build ended with `und=8` and
+no gap anyone heard. Each screenshot is one: it stops core 0 for 140 to
+200 ms while it writes 84 KB, the emulator loses 7 to 10 frames, and the
+audio ring runs dry. Three screenshots triggered over openocd gave exactly
+three underruns. The settings menu's save on every keypress very likely
+does the same in smaller amounts, but could not be tested from the
+console, which cannot send Alt. The user does not count these as a
+problem: they happen while a menu or screenshot is already interrupting
+the game. Writing to the card in pieces between frames would remove them,
+if that ever matters.
 
 ### 2026-11-02: halting the PicoCalc from gdb can now reboot it
 

@@ -677,7 +677,7 @@ Phase 5 plan has to say what it does about this, and Twisted is the test.
 
 **Exit:** N2 met, measured rates in `docs/HANDOFF.md`.
 
-**Built and run on a Pico 2 W, 2026-11-01 to 02, branch `picocalc-phase5`.**
+**Signed off 2026-11-02, after running on a Pico 2 W; branch `picocalc-phase5`.**
 Five steps, each run on the board:
 
 1. `clk_peri` on `clk_sys` (section 6).
@@ -705,6 +705,11 @@ the mode:
 
 A whole changed frame takes about 23 ms at 63 MHz, just over one emulated
 frame, so it lands on every other one. RAM 322,408 bytes (61.5%).
+
+`und` rises by one for each screenshot, and probably for settings saves:
+both stop core 0 for an SD write long enough to empty the audio ring. The
+user accepts this, since a menu or screenshot is already interrupting play
+(`docs/HANDOFF.md`).
 
 ### Phase 6: polish
 

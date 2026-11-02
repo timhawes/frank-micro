@@ -1000,7 +1000,7 @@ UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
 a second. Emulation is at 100% in every mode, MODE 7 included. **Phase 3, the
 keyboard, is signed off** (2026-10-31). **Phase 4, sound, is signed off**
-(2026-11-01). **Phase 5, speed, runs on hardware** and awaits sign-off. **Switch the PicoCalc on
+(2026-11-01). **Phase 5, speed, is signed off** (2026-11-02). **Switch the PicoCalc on
 whenever the Pico runs**: an unpowered card reads back as zeros until all
 power is removed.
 
@@ -1028,7 +1028,7 @@ The `STAT` line reports:
 - `kbd_err`: keyboard I²C errors and stalled reads
 - `snd`: audio samples queued, which hovers near 2,048
 - `trim`: audio samples skipped (+) or repeated (−), cumulative
-- `und`: audio underruns
+- `und`: audio underruns; each screenshot adds one, as can settings saves
 - `sdrop`: audio blocks dropped for lack of room
 
 A test disc at `/micro/disk/drivea.ssd` autoboots with no `micro.ini`. The brief is `REQUIREMENTS.md`, the plan is
