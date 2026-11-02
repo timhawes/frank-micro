@@ -761,8 +761,10 @@ end-to-end checklist passed on the Pico 2 W unit:
 - **Joystick**, section 7.4.
 - **The no-SD error screen stays up.** Its loop feeds the watchdog on
   `picocalc` only; the other boards keep `docs/INVESTIGATION.md` finding 4.
-  It also re-sends the frame after each palette step, so the plasma should
-  animate on the panel, which it cannot under HSTX. It stays up on the board; the animation was not reported on.
+  It also re-sends the frame after each palette step, so the plasma
+  animates on the panel, which it cannot under HSTX. Both confirmed on the
+  board: the screen stays up and the background flows, with the text on its
+  black backdrop.
 - **`release.sh`** builds `picocalc_frank-micro_<ver>_lcd.uf2`, with USB HID
   off for that entry only. A trial run built all nine variants.
 - **README** has a PicoCalc section.
