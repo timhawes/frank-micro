@@ -294,8 +294,17 @@ tracking is the main lever.
    scanning. Core 1 measures the refresh at boot (484 lines in about
    17,040 µs) and, before each send, waits only if the scan would otherwise
    cross the rows being written. See `lcd_wait_scan()` for the arithmetic.
-6. The 64 spare rows (0–31 and 288–319) belong to the driver. Phase 6 draws
-   the status line there (F11).
+6. The 64 spare rows (0–31 and 288–319) belong to the driver. Since Phase 6
+   the status line (F11) is panel rows 299–308, in the bottom band. Core 0
+   composes a 320×10 block of palette indices and hands it over with
+   `lcd_status_set()`, a 3.2 KB copy under the frame spin lock. Core 1 sends
+   it between frames when its version changes, or after a palette change.
+   Core 0 redraws it once a second, and within a frame when the BBC's CAPS or
+   SHIFT lock light changes (`IC32` bits 6 and 7, active low).
+7. **MODE 0 and MODE 3 are point-sampled**, one engine pixel of each pair
+   (F13). Blending each pair was built on 2026-11-02 and reverted the same
+   day: it read worse and overran core 0 in Twisted's 80-column parts
+   (`docs/HANDOFF.md`).
 
 DMA channels are claimed with `dma_claim_unused_channel()`, **after**
 `pwm_audio_init()` has run, or with 8–11 reserved first. PWM hardcodes 8 and
@@ -514,7 +523,25 @@ reached through `` ` ``.
 The existing gamepad presets in `frank_settings.c` ("Arrows", "Z X : /")
 already map abstract pad actions to BBC keys. A PicoCalc source can feed the
 same `frank_gamepad_poll()` merge: arrows as the d-pad, Alt as fire 1, and
-Ctrl as fire 2. Alt is free because the BBC has no Alt key. Deferred.
+Ctrl as fire 2. Alt is free because the BBC has no Alt key.
+
+**Built 2026-11-02.** On the PicoCalc the "Gamepad" setting is labelled
+**Joystick** and defaults to Off. It is saved under the INI key `joystick`
+rather than `gamepad`: every card already has `gamepad=2` from earlier
+phases, and reusing the key would have turned the arrows into Z X : / without
+anyone asking.
+
+When it is not Off:
+
+- the arrows are the d-pad and never reach the BBC as cursor keys;
+- Alt is fire 1 and Ctrl fire 2, which both presets map to RETURN and SPACE;
+- Ctrl stops pressing BBC CTRL, but is still tracked, so Ctrl+Alt+Del and
+  the Alt chords still work;
+- an arrow pressed while Alt is held still moves, so fire and direction can
+  be held together.
+
+While an overlay is open the joystick reports nothing and the arrows drive the
+menu. The table is in `frank_kbd_picocalc_pad()`.
 
 ---
 
@@ -717,6 +744,32 @@ Status line in the spare rows (F11), battery and keyboard backlight (F12), the
 joystick source (F14), optionally a MODE 0/3 full-width option (F13), a release
 build, and the README section.
 
+Built and **signed off 2026-11-02**, on branch `picocalc-phase6`. The brief's
+end-to-end checklist passed on the Pico 2 W unit:
+
+- **Status line**, section 5.1 item 6: disc, model, emulation speed (red
+  below 99%), the panel's frame rate, CAPS and SHIFT lights, and the battery.
+- **Battery** from register 0x0B, read about every 5 s in place of one FIFO
+  read, so the bus traffic does not change shape. `bat=` on the `STAT` line
+  is the raw byte. On the test unit, charging on USB, it reads `0xAC`, shown
+  as `BAT 44%+`. With the cells out it reads `0x00`, or `0x80` on USB,
+  both shown as `BAT --`.
+- **Backlights** are left to the keyboard firmware's own chords, by the
+  user's decision. Nothing writes 0x05 or 0x0A.
+- **MODE 0 and 3 blending: tried and reverted**, section 5.1 item 7. They
+  stay point-sampled.
+- **Joystick**, section 7.4.
+- **The no-SD error screen stays up.** Its loop feeds the watchdog on
+  `picocalc` only; the other boards keep `docs/INVESTIGATION.md` finding 4.
+  It also re-sends the frame after each palette step, so the plasma should
+  animate on the panel, which it cannot under HSTX. It stays up on the board; the animation was not reported on.
+- **`release.sh`** builds `picocalc_frank-micro_<ver>_lcd.uf2`, with USB HID
+  off for that entry only. A trial run built all nine variants.
+- **README** has a PicoCalc section.
+
+RAM 332,360 bytes (63.4%). The other 22 builds are byte-identical, dates
+aside.
+
 **Exit:** the brief's end-to-end checklist passes.
 
 ---
@@ -731,6 +784,7 @@ row sums, and the UART rings. Measured: 277,792 bytes in Phase 1, and
 313,212 (59.7%) in Phase 2, which adds the 32 KB RGB555 lookup table that
 makes the blit cheap enough for MODE 7 (see `docs/HANDOFF.md`). Phase 5,
 with its row sums, line buffers and second hash array, is 322,408 (61.5%).
+Phase 6, with the status line's three 3.2 KB buffers, is 332,360 (63.4%).
 Well inside
 N5's ceiling, the `COMPOSITE` build at 393,000 bytes (75%). Core 1's LCD loop runs from RAM
 (`__not_in_flash_func`), per `CLAUDE.md` constraint 4, though it is no longer
@@ -762,7 +816,8 @@ LCD if Phase 5 needs a completion interrupt. Core 1 can poll instead.
 resets the STM32 after a delay. Writing `REG_ID_OFF` (0x0E) changes its
 power-off behaviour. The STM32 also gates the Pico's own power through
 `PICO_EN`. The driver writes neither register and only reads 0x01, 0x09 and,
-in Phase 6, 0x0B, 0x05 and 0x0A.
+since Phase 6, 0x0B. The backlight registers 0x05 and 0x0A are neither read
+nor written; the firmware's own chords own them.
 
 ---
 
@@ -777,7 +832,7 @@ in Phase 6, 0x0B, 0x05 and 0x0A.
 | Does the CYW43 stay off with `WL_ON` undriven? | Nothing functional; power draw | Current draw, W against non-W |
 | Is a plain BREAK `m6502_reset()` or `main_reset()`? | Correct BREAK | **Answered 2026-10-30: neither alone.** B-em's BREAK is `m6502_reset()`, `video_reset()` and `wd1770_reset()`; section 7.2 |
 | Does the panel need `INVON`, and does `MADCTL` 0x48 give the right orientation? | Phase 2 colours | **Answered 2026-10-30: yes, and yes.** With `INVON`, `MADCTL` 0x48 and `LCD_SWAP_RB` 0, the picture is upright, unmirrored and not inverted, and pure red, green and blue bars show true |
-| Is a Phase 6 battery reading percent alone, or has it a charging flag? | Status line wording | Read `battery.ino` in Phase 6 |
+| Is a Phase 6 battery reading percent alone, or has it a charging flag? | Status line wording | **Answered 2026-11-02: both.** Register 0x0B returns `[0x0B, v]`: bits 0–6 percent, 0 for no battery, bit 7 charging (`sync_bat()` in ClockworkPi's keyboard firmware at `fdcfe2c`). The test unit reads `0xAC` (44%, charging) |
 
 ---
 

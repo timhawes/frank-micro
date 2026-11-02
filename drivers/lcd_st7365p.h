@@ -38,4 +38,11 @@ extern volatile uint32_t lcd_wait_us;
  * few instructions under a spin lock. */
 uint8_t *lcd_begin_frame(uint8_t *a, uint8_t *b);
 
+/* The status line: LCD_STATUS_H rows of 320 palette indices, shown at panel
+ * row LCD_STATUS_Y, in the band below the BBC picture.  Core 0 calls this
+ * whenever the line changes; it copies the rows and returns. */
+#define LCD_STATUS_H 10
+#define LCD_STATUS_Y 299
+void lcd_status_set(const uint8_t *pix);
+
 #endif /* LCD_ST7365P_H */

@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "pico.h"
 #include "pico/multicore.h"
@@ -427,6 +428,48 @@ static void __not_in_flash_func(lcd_push_frame)(const uint8_t *fb) {
     lcd_rows_sent += n;
 }
 
+/*
+ * The status line, in the band below the BBC picture.  Core 0 composes it
+ * (frank_platform.c) and hands it over with lcd_status_set(); core 1 sends it
+ * between frames when it has changed, or when the palette has.  The band is
+ * the driver's own: nothing else writes panel rows 288-319.
+ */
+static uint8_t  s_status_shared[LCD_W * LCD_STATUS_H];   /* under s_lock */
+static uint32_t s_status_ver;                            /* under s_lock */
+static uint8_t  s_status_mine[LCD_W * LCD_STATUS_H];     /* core 1's copy */
+static uint32_t s_status_sent = 0;
+static volatile bool s_status_force;
+
+void lcd_status_set(const uint8_t *pix) {
+    uint32_t save = spin_lock_blocking(s_lock);
+    memcpy(s_status_shared, pix, sizeof s_status_shared);
+    s_status_ver++;
+    spin_unlock(s_lock, save);
+}
+
+static void __not_in_flash_func(lcd_status_service)(void) {
+    bool force = s_status_force;
+    if (!force && s_status_ver == s_status_sent) return;   /* a stale read only delays it */
+    uint32_t save = spin_lock_blocking(s_lock);
+    uint32_t ver = s_status_ver;
+    if (ver) memcpy(s_status_mine, s_status_shared, sizeof s_status_mine);
+    spin_unlock(s_lock, save);
+    s_status_force = false;
+    s_status_sent = ver;
+    if (!ver) return;
+
+    lcd_window(0, LCD_STATUS_Y, LCD_W - 1, LCD_STATUS_Y + LCD_STATUS_H - 1);
+    int k = 0;
+    for (int y = 0; y < LCD_STATUS_H; y++) {
+        row_convert(s_rows[k], s_status_mine + y * LCD_W);
+        if (y) lcd_dma_wait();
+        lcd_dma_start(s_rows[k], sizeof s_rows[k]);
+        k ^= 1;
+    }
+    lcd_dma_wait();
+    lcd_cs(1);
+}
+
 static void __not_in_flash_func(lcd_core1_run)(void) {
     lcd_panel_init();
     lcd_clear();
@@ -435,6 +478,7 @@ static void __not_in_flash_func(lcd_core1_run)(void) {
     printf("LCD: panel initialised on core 1\n");
 
     for (;;) {
+        lcd_status_service();
         uint32_t save = spin_lock_blocking(s_lock);
         uint8_t *fb = s_latest;
         if (fb) {
@@ -506,7 +550,7 @@ void graphics_set_res(int w, int h) { s_width = w; s_height = h; }
 void graphics_set_shift(int x, int y) { (void)x; (void)y; }
 void graphics_set_mode(enum graphics_mode_t mode) { (void)mode; }
 
-void graphics_set_palette(uint8_t i, uint32_t color888) {
+static void set_entry(uint8_t i, uint32_t color888) {
     s_palette[i] = color888 & 0xFFFFFFu;
     uint32_t r = (color888 >> 16) & 0xFF, g = (color888 >> 8) & 0xFF, b = color888 & 0xFF;
 #if LCD_SWAP_RB
@@ -514,7 +558,12 @@ void graphics_set_palette(uint8_t i, uint32_t color888) {
 #endif
     uint16_t c = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
     s_rgb565[i] = (uint16_t)((c >> 8) | (c << 8));   /* high byte first on the wire */
-    s_force = true;   /* the same indices now look different: resend everything */
+}
+
+void graphics_set_palette(uint8_t i, uint32_t color888) {
+    set_entry(i, color888);
+    s_force = true;          /* the same indices now look different: resend everything */
+    s_status_force = true;
 }
 uint32_t graphics_get_palette(uint8_t i) { return s_palette[i]; }
 void graphics_set_bgcolor(uint32_t color888) { (void)color888; }

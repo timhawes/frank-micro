@@ -108,6 +108,66 @@ static uint32_t pc_screen_hash(void) {
     return h;
 }
 
+/* ── The on-screen status line ──────────────────────────────────────────
+ *
+ * One line in the band below the BBC picture: the disc in drive 0, the
+ * model, emulation speed, frames a second reaching the panel, the BBC's Caps
+ * Lock and Shift Lock lights, which the PicoCalc has nowhere else to show,
+ * and the battery.  Composed here and handed to the LCD driver, which sends
+ * it from core 1.  Redrawn once a second, and at once when a lock light
+ * changes.  The lights come from IC32, the system VIA's addressable latch,
+ * where B-em keeps them active low: bit 6 Caps Lock, bit 7 Shift Lock.
+ */
+extern uint8_t IC32;
+extern bool    MASTER;
+static uint8_t  s_stat_pix[320 * LCD_STATUS_H];
+static uint32_t s_stat_pct, s_stat_fps;
+static uint8_t  s_stat_locks = 0xFF;     /* IC32 & 0xC0 as last drawn */
+
+static int pc_status_put(int x, const char *s, uint8_t colour) {
+    ui_draw_string(s_stat_pix, 320, x, 1, s, colour);
+    return x + (int)strlen(s) * UI_CHAR_W + UI_CHAR_W;
+}
+
+static void pc_status_draw(void) {
+    char pct[8], fps[8], bat[12];
+    uint8_t locks = IC32 & 0xC0u;
+    s_stat_locks = locks;
+
+    uint8_t b = picocalc_kbd_battery();
+    uint8_t bat_colour = UI_COLOR_FG;
+    if (b == 0xFF || (b & 0x7Fu) == 0) {
+        snprintf(bat, sizeof bat, "BAT --");
+        bat_colour = UI_COLOR_DIM;
+    } else {
+        snprintf(bat, sizeof bat, "BAT %u%%%s", (unsigned)(b & 0x7Fu), (b & 0x80u) ? "+" : "");
+        if (!(b & 0x80u) && (b & 0x7Fu) <= 15u) bat_colour = UI_COLOR_ERROR;
+    }
+    snprintf(pct, sizeof pct, "%lu%%", (unsigned long)s_stat_pct);
+    snprintf(fps, sizeof fps, "%lufps", (unsigned long)s_stat_fps);
+    const char *model = MASTER ? "M128" : "B";
+
+    /* Everything but the disc name is fixed width or nearly; the name gets
+     * whatever room is left. */
+    int right = (int)(strlen(model) + strlen(pct) + strlen(fps) + 4 + 5 + strlen(bat) + 6)
+                * UI_CHAR_W;
+    int room = (320 - 4 - right) / UI_CHAR_W;
+    char disc[54];
+    const char *d = frank_disc_name(0);
+    snprintf(disc, sizeof disc, "%.*s", room > 0 ? room : 0, d ? d : "no disc");
+
+    memset(s_stat_pix, UI_COLOR_BLACK, sizeof s_stat_pix);
+    pc_status_put(2, disc, d ? UI_COLOR_FG : UI_COLOR_DIM);
+    int x = 320 - 2 - right + UI_CHAR_W;
+    x = pc_status_put(x, model, UI_COLOR_DIM);
+    x = pc_status_put(x, pct, s_stat_pct >= 99u ? UI_COLOR_FG : UI_COLOR_ERROR);
+    x = pc_status_put(x, fps, UI_COLOR_DIM);
+    x = pc_status_put(x, "CAPS", (locks & 0x40u) ? UI_COLOR_DIM : UI_COLOR_OK);
+    x = pc_status_put(x, "SHIFT", (locks & 0x80u) ? UI_COLOR_DIM : UI_COLOR_OK);
+    pc_status_put(x, bat, bat_colour);
+    lcd_status_set(s_stat_pix);
+}
+
 static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     static uint32_t seconds = 0;
     static uint32_t lcd_last = 0, push_last = 0, rows_last = 0, wait_last = 0;
@@ -121,10 +181,13 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
     uint32_t busy = (uint32_t)(((dt_us - idle) * 100u + dt_us / 2) / dt_us);
     const char *disc = frank_disc_name(0);
     seconds++;
+    s_stat_pct = pct;
+    s_stat_fps = push_now - push_last;
+    pc_status_draw();
     pwm_ring_stats_t snd;
     pwm_ring_get_stats(&snd);
     printf("STAT t=%lus emu=%lufps %lu%% busy=%lu%% lcd=%lu push=%lu rows=%lu lwait=%lums scr=%08lx disc0=%s drop=%lu kbd_err=%lu"
-           " snd=%lu trim=%ld und=%lu sdrop=%lu\n",
+           " snd=%lu trim=%ld und=%lu sdrop=%lu bat=%02x\n",
            (unsigned long)seconds, (unsigned long)fps, (unsigned long)pct,
            (unsigned long)busy, (unsigned long)(lcd_now - lcd_last),
            (unsigned long)(push_now - push_last), (unsigned long)(rows_now - rows_last),
@@ -132,7 +195,7 @@ static void pc_status_line(uint32_t frames, uint64_t dt_us) {
            (unsigned long)pc_screen_hash(), disc ? disc : "-",
            (unsigned long)uart_stdio_nb_dropped(), (unsigned long)picocalc_kbd_errors(),
            (unsigned long)snd.fill, (long)snd.trim, (unsigned long)snd.underruns,
-           (unsigned long)snd.dropped);
+           (unsigned long)snd.dropped, (unsigned)picocalc_kbd_battery());
     lcd_last = lcd_now;
     push_last = push_now;
     rows_last = rows_now;
@@ -185,6 +248,9 @@ void frank_perf_tick(void) {
     /* With sound off nothing is pushed, so only this stops the audio ring
      * replaying its last 65 ms for ever (pwm_ring_audio.c). */
     pwm_ring_service();
+    /* A lock light changed: redraw the status line now, not at the next
+     * second. */
+    if ((IC32 & 0xC0u) != s_stat_locks) pc_status_draw();
 #endif
 
     /* ── 50 Hz pacer ─────────────────────────────────────────────────────────
@@ -459,6 +525,14 @@ static void boot_error_screen(FRESULT sd_result) {
         for (int i = 0; i < 64; i++)
             graphics_set_palette((uint8_t)(16 + i), plasma_pal[(uint8_t)(i + phase) & 63]);
         phase++;
+#if defined(PLATFORM_PICOCALC)
+        /* The panel keeps its own copy, so the new palette shows only when the
+         * frame is sent again.  And feed the watchdog, so this screen stays up
+         * rather than rebooting (docs/INVESTIGATION.md finding 4; the other
+         * boards keep that fault). */
+        graphics_set_buffer(SCREEN[0]);
+        crash_handler_feed();
+#endif
         sleep_ms(33);
     }
 #endif

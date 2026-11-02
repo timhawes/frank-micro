@@ -1000,7 +1000,8 @@ UART0 console and a once-a-second `STAT` line; SD, PWM audio and disc
 autoboot; and since Phase 2 the LCD, sent whole from core 1 at about 15 frames
 a second. Emulation is at 100% in every mode, MODE 7 included. **Phase 3, the
 keyboard, is signed off** (2026-10-31). **Phase 4, sound, is signed off**
-(2026-11-01). **Phase 5, speed, is signed off** (2026-11-02). **Switch the PicoCalc on
+(2026-11-01). **Phase 5, speed, is signed off** (2026-11-02). **Phase 6, polish, is signed off**
+(2026-11-02), with the brief's end-to-end checklist passed. All phases are done. **Switch the PicoCalc on
 whenever the Pico runs**: an unpowered card reads back as zeros until all
 power is removed.
 
@@ -1030,6 +1031,8 @@ The `STAT` line reports:
 - `trim`: audio samples skipped (+) or repeated (−), cumulative
 - `und`: audio underruns; each screenshot adds one, as can settings saves
 - `sdrop`: audio blocks dropped for lack of room
+- `bat`: the raw battery byte, register 0x0B: bits 0–6 percent, bit 7
+  charging, so `ac` is 44% and charging. 0% shows as `BAT --`
 
 A test disc at `/micro/disk/drivea.ssd` autoboots with no `micro.ini`. The brief is `REQUIREMENTS.md`, the plan is
 `docs/PICOCALC.md`, and decisions are logged in `docs/HANDOFF.md`. Update this
@@ -1053,6 +1056,16 @@ What makes it different from every other board:
   `frank_kbd_picocalc.c` therefore tracks physical keys. Never sleep or block on
   the bus: the sample driver's 16 ms sleep cannot run on core 0. See
   `docs/PICOCALC.md` section 5.2.
+- **A status line in the bottom band**, panel rows 299–308: disc, model,
+  speed, panel frame rate, CAPS and SHIFT lights, battery. Core 0 composes it
+  in `frank_platform.c` and hands it to the driver with `lcd_status_set()`;
+  core 1 sends it between frames.
+- **MODE 0 and 3 lose half their horizontal pixels**, as on the PIO video
+  path. Blending the pairs was tried and reverted: it read worse, and
+  Twisted's 80-column parts already run core 0 at 96–99% `busy`.
+- **The arrows, Alt and Ctrl can be a joystick.** The "Joystick" setting,
+  Off by default, is the `gamepad` setting saved under INI key `joystick`, so
+  that an old card's `gamepad=2` cannot switch it on.
 - **No F11 or F12.** Alt+D opens the disc loader, Alt+S the settings, Alt+P
   takes a screenshot. Alt+Esc is SHIFT-BREAK. Never use Alt with the **left**
   Shift: it trips a hidden NumLock in the keyboard firmware that swallows

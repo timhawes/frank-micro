@@ -33,6 +33,7 @@
 #include "frank_ui.h"
 #include "frank_screenshot.h"   /* g_frank_screenshot_pending */
 #include "frank_kbd_picocalc.h"
+#include "frank_settings.h"     /* the joystick setting */
 
 extern void main_reset(void);
 extern void m6502_reset(void);
@@ -110,6 +111,14 @@ void frank_kbd_picocalc_init(void) {
 
 /* ── BBC SHIFT and CTRL ───────────────────────────────────────────────────── */
 
+/* The joystick takes the arrows, Alt and Ctrl.  Ctrl is still tracked, so
+ * Ctrl+Alt+Del works, but it stops pressing BBC CTRL. */
+static bool joystick_on(void) { return g_frank_settings.gamepad != FRANK_GAMEPAD_OFF; }
+static bool is_arrow(uint8_t base) {
+    return base == PK_UP || base == PK_DOWN || base == PK_LEFT || base == PK_RIGHT;
+}
+static bool ctrl_to_bbc(void) { return s_ctrl && !joystick_on(); }
+
 static void bbc_update_modifiers(void) {
     bool shift = s_phys_shift > 0;
     uint32_t best = 0;
@@ -128,7 +137,7 @@ static void bbc_update_modifiers(void) {
         if (shift) key_down(ALLEGRO_KEY_LSHIFT); else key_up(ALLEGRO_KEY_LSHIFT);
     }
 
-    bool ctrl = s_ctrl || (s_break_frames > 0 && s_break_ctrl);
+    bool ctrl = ctrl_to_bbc() || (s_break_frames > 0 && s_break_ctrl);
     if (ctrl != s_bbc_ctrl) {
         s_bbc_ctrl = ctrl;
         if (ctrl) key_down(ALLEGRO_KEY_LCTRL); else key_up(ALLEGRO_KEY_LCTRL);
@@ -253,6 +262,13 @@ static void on_press(int key, uint8_t code) {
     if (base == PK_CTRL) { s->down = true; s_ctrl = true; bbc_update_modifiers(); return; }
     if (base == PK_ALT)  { s->down = true; s_alt = true; return; }
 
+    /* Joystick arrows: held for frank_kbd_picocalc_pad(), never typed.  Ahead
+     * of the Alt test, so moving while fire 1 is held works. */
+    if (joystick_on() && is_arrow(base) && !frank_ui_wants_keys()) {
+        s->down = true; s->allegro = 0; s->force = FORCE_NONE;
+        return;
+    }
+
     /* Alt never reaches the BBC.  A press with Alt held is a chord or is
      * dropped, and is never recorded: the firmware turns Alt+I into the code
      * Shift+Enter also sends. */
@@ -276,8 +292,8 @@ static void on_press(int key, uint8_t code) {
 
     /* BREAK in its plain and CTRL forms.  SHIFT-BREAK is the Alt+Esc chord. */
     if (code == PK_BREAK) {
-        bbc_break(FORCE_OFF, s_ctrl);
-        printf("KBD %sBREAK\n", s_ctrl ? "CTRL-" : "");
+        bbc_break(FORCE_OFF, ctrl_to_bbc());
+        printf("KBD %sBREAK\n", ctrl_to_bbc() ? "CTRL-" : "");
         return;
     }
 
@@ -317,6 +333,20 @@ static void on_event(uint8_t state, uint8_t code) {
     if (state == PICOCALC_KBD_PRESSED)       on_press(key, code);
     else if (state == PICOCALC_KBD_RELEASED) on_release(key, code);
     /* PICOCALC_KBD_HOLD: ignored.  The BBC OS does its own auto-repeat. */
+}
+
+void frank_kbd_picocalc_pad(int now[]) {
+    if (!joystick_on() || frank_ui_wants_keys()) return;
+    static const struct { uint8_t code; uint8_t action; } dirs[] = {
+        {PK_UP, FRANK_PAD_UP}, {PK_DOWN, FRANK_PAD_DOWN},
+        {PK_LEFT, FRANK_PAD_LEFT}, {PK_RIGHT, FRANK_PAD_RIGHT},
+    };
+    for (unsigned i = 0; i < sizeof dirs / sizeof dirs[0]; i++) {
+        int key = (int)s_code_to_key[dirs[i].code] - 1;
+        if (key >= 0 && s_state[key].down) now[dirs[i].action] = 1;
+    }
+    if (s_alt)  now[FRANK_PAD_FIRE1] = 1;
+    if (s_ctrl) now[FRANK_PAD_FIRE2] = 1;
 }
 
 void frank_kbd_picocalc_poll(void) {

@@ -15,7 +15,7 @@ Based on [B-em](https://b-em.bbcmicro.com/) by Tom Walker, with the Raspberry Pi
 
 ## Supported platforms
 
-Four RP2350 boards. Each has its own pin layout. All output HDMI video; HDMI-embedded audio is available on the default build.
+Five RP2350 boards. Each has its own pin layout. Four output HDMI video, with HDMI-embedded audio available on the default build; the PicoCalc uses its own screen.
 
 | Platform | Board | Video | Audio backends | Keyboard |
 |----------|-------|-------|----------------|----------|
@@ -23,6 +23,7 @@ Four RP2350 boards. Each has its own pin layout. All output HDMI video; HDMI-emb
 | m1 | Murmulator 1.x | HDMI (PIO) | HDMI, I2S, PWM | PS/2 or USB |
 | z0 | [Waveshare RP2350-PiZero](https://www.waveshare.com/rp2350-pizero.htm) | HDMI (PIO) | HDMI, I2S, PWM | PS/2 or USB |
 | fj | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) | DVI (PIO), or DVI (HSTX) | HDMI, I2S | USB only |
+| picocalc | [ClockworkPi PicoCalc](https://www.clockworkpi.com/picocalc) with a Pico 2 or Pico 2 W | 320x320 SPI LCD | PWM | its own |
 
 Select the platform at build time: `PLATFORM=m1 ./build.sh`. Default is `m2`.
 
@@ -49,6 +50,91 @@ use it:
   keeps HDMI-embedded audio and frees the PIO0 block entirely. The trade is
   that it has no USB-CDC console at all, because it retasks the USB PLL to
   clock the video, so use the UART console above. Not yet tested on hardware.
+
+### ClockworkPi PicoCalc
+
+`PLATFORM=picocalc`, with a **Raspberry Pi Pico 2 or Pico 2 W** in the
+PicoCalc's socket (mainboard v2.0). One UF2 runs on either module; the Pico 2
+W's wireless chip is left alone. The original Pico (RP2040) is not supported.
+
+```bash
+PLATFORM=picocalc ./build.sh     # HDMI_DRIVER is LCD_SPI; USB_HID=1 is rejected
+```
+
+**Switch the PicoCalc on** whenever the Pico runs, including while flashing
+over the Pico's own USB port. The keyboard controller powers the SD card and the
+screen.
+
+- **Screen.** The BBC's 320x256 picture sits in the middle of the 320x320 LCD.
+  Every mode is shown whole, all 256 lines. MODE 0 and MODE 3 have 640 pixels
+  across and the screen has 320, so every other pixel is shown and 80-column
+  text is rough.
+- **Status line**, in the band below the picture: the disc in drive 0, the
+  model, emulation speed (red below 99%), the screen's frame rate, the BBC's
+  CAPS and SHIFT lock lights, and the battery (`+` while charging, `--` with no
+  cells fitted).
+- **Sound** is PWM through the PicoCalc's own speakers and headphone jack.
+- **Console** at 115200 baud on the PicoCalc's USB-C port, and a second copy on
+  the Pico's own USB port.
+
+#### Keys
+
+Letters, digits, arrows, Shift and Ctrl are where a BBC user expects them.
+Symbols type what the PicoCalc key says.
+
+| BBC | PicoCalc |
+|-----|----------|
+| f1–f9, f0 | F1–F9, F10 (F6–F10 are Shift+F1–F5) |
+| ESCAPE | Esc |
+| BREAK | Shift+Esc |
+| CTRL-BREAK | Ctrl+Shift+Esc |
+| SHIFT-BREAK, autoboot | Alt+Esc |
+| COPY | Shift+Del |
+| DELETE | Backspace or Del |
+| CAPS LOCK | Caps |
+| SHIFT LOCK | Alt+Caps |
+
+There is no F11 or F12:
+
+| Action | PicoCalc |
+|--------|----------|
+| Disc loader | Alt+D |
+| Settings | Alt+S |
+| Screenshot | Alt+P |
+| Hard reset | Ctrl+Alt+Del |
+
+Use the **right** Shift with Alt. Alt with the left Shift turns on a hidden
+NumLock in the keyboard's own firmware, after which Space, `,`, `.` and `B`
+stop working until it is pressed again.
+
+The keyboard backlight and screen brightness are set by the keyboard's own
+firmware chords, as in any other PicoCalc program.
+
+#### Joystick
+
+The settings menu's **Joystick** entry turns the arrows, Alt and Ctrl into a
+joystick for games: arrows are the directions, Alt is fire 1 and Ctrl is
+fire 2. "Arrows" presses the BBC cursor keys, RETURN and SPACE; "Z X : /"
+presses Z, X, :, / for left, right, up and down, with the same fire keys. It is
+Off by default. While it is on, the arrows and Ctrl no longer act as BBC keys,
+and the Alt chords still work.
+
+#### Pins
+
+| Function | GPIO |
+|----------|------|
+| LCD, `spi1`: SCK, MOSI, MISO, CS, DC, RST | 10, 11, 12, 13, 14, 15 |
+| SD card, `spi0`: MISO, CS, SCK, MOSI | 16, 17, 18, 19 |
+| SD card detect | 22 |
+| Keyboard, `i2c1` at 0x1F: SDA, SCL | 6, 7 |
+| Console, `uart0`: TX, RX | 0, 1 |
+| Audio, PWM left and right | 26, 27 |
+
+#### Not supported
+
+- The PicoCalc's 8 MB PSRAM is not used.
+- Wi-Fi and Bluetooth on a Pico 2 W are not used.
+- No HDMI or I2S audio, and no USB keyboard or gamepad.
 
 ## Features
 
@@ -281,7 +367,8 @@ All options are environment variables (or CMake cache entries).
 ./release.sh 1.00       # version 1.00
 ```
 
-Output goes to `release/`, one UF2 per combination.
+Output goes to `release/`, one UF2 per combination. Every build has USB HID
+on, except the PicoCalc's, which cannot.
 
 ### Flashing
 

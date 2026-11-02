@@ -33,4 +33,9 @@ void picocalc_kbd_poll(picocalc_kbd_event_fn fn);
 /* Bus errors and stalled reads since boot.  Reported on the STAT line. */
 uint32_t picocalc_kbd_errors(void);
 
+/* The battery register as last read, every few seconds: charge in percent in
+ * bits 0-6, bit 7 set while charging, 0 with no battery.  0xFF until the
+ * first read. */
+uint8_t picocalc_kbd_battery(void);
+
 #endif /* PICOCALC_KBD_H */

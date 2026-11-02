@@ -44,7 +44,11 @@ frank_settings_t g_frank_settings = {
     .start_mode  = 7,                   /* MODE 7 (standard BBC default) */
     .caps_ctrl   = 0,                   /* Normal */
     .dac         = 0,                   /* Off    */
+#if defined(PLATFORM_PICOCALC)
+    .gamepad     = FRANK_GAMEPAD_OFF,   /* the keyboard joystick: arrows type by default */
+#else
     .gamepad     = FRANK_GAMEPAD_ZXCOLON, /* common BBC game keys (Z X : /) */
+#endif
 };
 
 bool g_frank_settings_dirty = false;
@@ -137,7 +141,11 @@ const char *frank_settings_label(frank_setting_id_t id) {
         case FRANK_SETTING_START_MODE:  return "Startup Mode";
         case FRANK_SETTING_CAPS_CTRL:   return "CAPS/CTRL Keys";
         case FRANK_SETTING_DAC:         return "Printer DAC";
+#if defined(PLATFORM_PICOCALC)
+        case FRANK_SETTING_GAMEPAD:     return "Joystick";
+#else
         case FRANK_SETTING_GAMEPAD:     return "Gamepad";
+#endif
         default:                        return "?";
     }
 }
@@ -403,7 +411,12 @@ static const ini_field_t INI_FIELDS[] = {
     { "start_mode",  &g_frank_settings.start_mode,  8 },
     { "caps_ctrl",   &g_frank_settings.caps_ctrl,   2 },
     { "dac",         &g_frank_settings.dac,         2 },
+#if defined(PLATFORM_PICOCALC)
+    /* A new key, so a card's old gamepad=2 cannot turn the arrows into Z X : / */
+    { "joystick",    &g_frank_settings.gamepad,     FRANK_GAMEPAD_COUNT },
+#else
     { "gamepad",     &g_frank_settings.gamepad,     FRANK_GAMEPAD_COUNT },
+#endif
 };
 #define INI_FIELD_COUNT ((int)(sizeof(INI_FIELDS)/sizeof(INI_FIELDS[0])))
 

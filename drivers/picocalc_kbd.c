@@ -25,6 +25,12 @@
  * about 15 ms of bus time, run entirely by the hardware, and 150 events a
  * second, against about 10 a second from a held key.
  *
+ * Every few seconds the first transaction of a batch reads the battery
+ * register (0x0B) instead of the FIFO.  It has the same shape on the bus, a
+ * one-byte write and a two-byte read, and its reply is [0x0B, value]: the
+ * charge in percent in bits 0-6, bit 7 set while charging, and 0 with no
+ * battery (sync_bat() in ClockworkPi's keyboard firmware).
+ *
  * Nothing here writes to any controller register.  The controller is also the
  * power manager; register 0x08 resets it and 0x0E powers the board off.
  */
@@ -37,6 +43,8 @@
 
 #define KBD_I2C_HZ      10000u  /* ClockworkPi's own value; see the header note */
 #define KBD_REG_FIFO    0x09u
+#define KBD_REG_BAT     0x0Bu
+#define KBD_BAT_POLLS   250     /* about 5 s at one poll a frame */
 #define KBD_BATCH       3       /* transactions queued per poll */
 #define KBD_STALL_POLLS 10      /* a batch still unfinished after this is reset */
 
@@ -44,6 +52,9 @@ static uint32_t s_errors;
 static bool     s_outstanding;
 static int      s_waited;
 static bool     s_draining;     /* discard events until the queue is seen empty */
+static bool     s_bat_pending;  /* the outstanding batch starts with a battery read */
+static int      s_bat_countdown;
+static uint8_t  s_battery = 0xFF;
 
 static void kbd_bus_init(void) {
     i2c_init(KBD_I2C_PORT, KBD_I2C_HZ);
@@ -68,10 +79,15 @@ void picocalc_kbd_init(void) {
 }
 
 uint32_t picocalc_kbd_errors(void) { return s_errors; }
+uint8_t  picocalc_kbd_battery(void) { return s_battery; }
 
 static void kbd_queue_batch(i2c_hw_t *hw) {
+    /* A battery read once the boot drain is over, then every few seconds. */
+    s_bat_pending = !s_draining && --s_bat_countdown <= 0;
+    if (s_bat_pending) s_bat_countdown = KBD_BAT_POLLS;
     for (int i = 0; i < KBD_BATCH; i++) {
-        hw->data_cmd = KBD_REG_FIFO | I2C_IC_DATA_CMD_STOP_BITS;
+        uint32_t reg = (i == 0 && s_bat_pending) ? KBD_REG_BAT : KBD_REG_FIFO;
+        hw->data_cmd = reg | I2C_IC_DATA_CMD_STOP_BITS;
         hw->data_cmd = I2C_IC_DATA_CMD_CMD_BITS;
         hw->data_cmd = I2C_IC_DATA_CMD_CMD_BITS | I2C_IC_DATA_CMD_STOP_BITS;
     }
@@ -104,6 +120,10 @@ void picocalc_kbd_poll(picocalc_kbd_event_fn fn) {
              * lose a release and leave a key stuck. */
             for (int i = 0; i < KBD_BATCH; i++) {
                 uint8_t state = rx[2 * i], code = rx[2 * i + 1];
+                if (i == 0 && s_bat_pending) {
+                    if (state == KBD_REG_BAT) s_battery = code;
+                    continue;
+                }
                 if (state == 0 && code == 0) {
                     s_draining = false;
                     continue;

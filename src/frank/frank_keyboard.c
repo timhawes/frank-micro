@@ -320,6 +320,10 @@ static void frank_gamepad_poll(void) {
     }
 #endif
 
+#ifdef PLATFORM_PICOCALC
+    frank_kbd_picocalc_pad(now);   /* arrows, Alt and Ctrl as a joystick */
+#endif
+
     for (int a = 0; a < FRANK_PAD_ACTION_COUNT; ++a) {
         if (now[a] == prev[a]) continue;
         int code = frank_gamepad_key_for((frank_pad_action_t)a);

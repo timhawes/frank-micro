@@ -17,7 +17,11 @@
 #   m1p2_frank-micro_*_composite.uf2        (M1, composite PAL/NTSC TV + I2S audio)
 #   z0p2_frank-micro_*_hdmi-pio-audio.uf2   (Z0, HDMI audio + PIO HDMI)
 #   z0p2_frank-micro_*_hdmi-pio.uf2         (Z0, PIO HDMI/VGA + I2S audio)
+#   picocalc_frank-micro_*_lcd.uf2          (PicoCalc with a Pico 2 or Pico 2 W:
+#                                            its own LCD, keyboard and PWM audio)
 # (Composite TV is software-timed and not wired on Z0, so it is omitted there.)
+# The PicoCalc is built with USB HID off, which it requires: its keyboard is
+# on I2C, and USB serial is its second console.
 #
 set -e
 
@@ -40,6 +44,7 @@ BUILD_MATRIX=(
     "m1:m1p2_:composite:COMPOSITE"
     "z0:z0p2_:hdmi-pio-audio:HDMI_PIO_AUDIO"
     "z0:z0p2_:hdmi-pio:HDMI_PIO"
+    "picocalc:picocalc_:lcd:LCD_SPI"
 )
 
 VERSION_FILE="version.txt"
@@ -64,7 +69,7 @@ echo -e "${CYAN}│                   FRANK MICRO Release Builder               
 echo -e "${CYAN}└─────────────────────────────────────────────────────────────────┘${NC}"
 echo ""
 echo -e "Last version: ${YELLOW}${LAST_MAJOR}.$(printf '%02d' $LAST_MINOR)${NC}"
-echo -e "Variants: ${CYAN}${#BUILD_MATRIX[@]}${NC} (m2x3, m1x3, z0x2)"
+echo -e "Variants: ${CYAN}${#BUILD_MATRIX[@]}${NC} (m2x3, m1x3, z0x2, picocalc)"
 echo ""
 
 DEFAULT_VERSION="${NEXT_MAJOR}.$(printf '%02d' $NEXT_MINOR)"
@@ -98,6 +103,8 @@ FAILED=()
 
 for ENTRY in "${BUILD_MATRIX[@]}"; do
     IFS=':' read -r PLAT PREFIX VIDEO_SUFFIX DRIVER <<< "$ENTRY"
+    USB_HID=ON
+    [[ "$PLAT" == picocalc ]] && USB_HID=OFF
     LABEL="${PREFIX}${VIDEO_SUFFIX}"
     OUTPUT_NAME="${PREFIX}frank-micro_${VERSION}_${VIDEO_SUFFIX}.uf2"
 
@@ -114,7 +121,7 @@ for ENTRY in "${BUILD_MATRIX[@]}"; do
         -DPICO_PLATFORM=rp2350 \
         -DPLATFORM="$PLAT" \
         -DHDMI_DRIVER="$DRIVER" \
-        -DUSB_HID_ENABLED=ON \
+        -DUSB_HID_ENABLED="$USB_HID" \
         > /dev/null 2>&1 && \
        make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) > /dev/null 2>&1; then
         if [[ -f "frank-micro.uf2" ]]; then

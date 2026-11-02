@@ -1576,6 +1576,58 @@ decision.
 Noticed in passing, not the cause here: the B+ branch of `fe34_write()`
 tests `val & 80`, decimal, where `0x80` was surely meant.
 
+### 2026-11-02: PicoCalc Phase 6 decisions
+
+The user decided, before any code:
+
+- **Status line in the bottom band**, panel rows 299–308. It shows the disc,
+  model, emulation speed, the panel's frame rate, the CAPS and SHIFT lock
+  lights, and the battery.
+- **Backlights are left to the keyboard firmware's own chords.** No menu
+  entries, and nothing writes registers 0x05 or 0x0A.
+- **MODE 0 and MODE 3 were to be blended, always**, rather than offering a
+  choice. **Tried and reverted the same day**; see the next entry.
+
+Found while building it:
+
+- **Battery register 0x0B** is `[0x0B, v]`: bits 0–6 percent, bit 7
+  charging, 0% meaning no cells. The test unit, charging on USB, reads
+  `0xAC` and `0xAD`, 44–45%, which the user confirmed. Earlier readings
+  of `0x00` and `0x80` were taken while the user was removing and refitting
+  the cells, so they are what no cells look like, off USB and on it. Both
+  show `BAT --`. It is read in place of one FIFO read about every 5 s, so a key
+  event is never lost to it: the reply is recognised by its first byte.
+- **The `gamepad` INI key is a trap on the PicoCalc.** Every card used in
+  Phases 1–5 already holds `gamepad=2`, the other boards' default, saved by
+  the first settings write. The joystick reuses that setting, so with the
+  same key it would have come up as Z X : / and quietly stolen the arrows.
+  It is stored as `joystick` instead, and defaults to Off.
+- **The `KBD st=…` console log stays on.** Phase 3's note said Phase 6 would
+  quieten it, but the brief's F9 requires the console to report keyboard
+  events, and the UART path cannot block, so there was nothing to gain.
+- **The no-SD error screen** now feeds the watchdog on `picocalc` only, so
+  it stays up; the other boards keep `docs/INVESTIGATION.md` finding 4. It
+  re-sends the frame after each palette step, because the panel keeps its
+  own copy and a palette write alone repaints nothing.
+
+### 2026-11-02: blending MODE 0 and MODE 3 was reverted
+
+Each pair of different pixels became palette index `160 + a*8 + b`, the
+average of the two colours, which the LCD driver kept in step with entries
+0–7. Two things went wrong on the board:
+
+- **It was not readable.** The user found blended 80-column text worse than
+  the point sampling it replaced: "I think unblended was better."
+- **It overran core 0 in Twisted's 80-column parts.** A static MODE 0
+  screen measured `busy=96%`, and the demo lost speed and broke up its
+  sound, with 279 underruns. The blend costs a second table lookup per
+  differing pair, and those parts were already at the edge.
+
+Reverted to point sampling, as in Phase 5. Four minutes of Twisted then ran
+at 100% with no underruns, but its heavy parts still reach 96–99% `busy`.
+There is very little headroom there, so measure `busy` in those parts
+before adding any per-pixel work to the LCD blit.
+
 ### 2026-11-02: halting the PicoCalc from gdb can now reboot it
 
 Writing an SPI register through gdb, which halts both cores, was followed
